@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "example-notes",
+    "version": "1",
+    "displayName": "Example Notes skill",
+    "description": "TEST ONLY fixture skill."
+  },
+  "source": "SKILL.md"
+}

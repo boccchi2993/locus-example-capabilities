@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "example-notes",
+    "version": "1.0.0",
+    "displayName": "Example Notes",
+    "description": "TEST ONLY fixture capability for the scaffold test suite.",
+    "plugins": [],
+    "skills": [
+      "example-notes"
+    ],
+    "mcps": [],
+    "credentials": [
+      {
+        "name": "EXAMPLE_API_KEY",
+        "label": "Example API key",
+        "description": "TEST ONLY fixture credential.",
+        "origin": "https://api.example.com",
+        "pathPrefix": "/v1/",
+        "header": "Authorization",
+        "scheme": "Bearer"
+      }
+    ]
+  }
+}
