@@ -5,7 +5,7 @@ Locus 的官方示例能力包（.locus）仓库（见 locus-product DECISIONS D
 
 ## 能力列表
 
-（暂无——首个真实能力将在后续 PR 中加入。）
+- **deepseek-web** — 用 DeepSeek Search / Fetch API 搜索网页、抓取页面正文（需要 DeepSeek API key）。
 
 ## 构建与检查
 
