@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "deepseek-web",
+    "version": "1.0.0",
+    "displayName": "DeepSeek Web Search",
+    "description": "Search the web and fetch pages through the DeepSeek Search / Fetch API. Requires a DeepSeek API key.",
+    "plugins": [],
+    "skills": ["deepseek-web-search"],
+    "mcps": [],
+    "credentials": [{
+      "name": "DEEPSEEK_API_KEY",
+      "label": "DeepSeek API key",
+      "description": "Used only for the DeepSeek Search and Fetch API (api.deepseek.com/v1/tools/).",
+      "origin": "https://api.deepseek.com",
+      "pathPrefix": "/v1/tools/",
+      "header": "Authorization",
+      "scheme": "Bearer"
+    }]
+  }
+}

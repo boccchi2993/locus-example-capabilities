@@ -1,0 +1,8 @@
+{
+  "title": "deepseek-web",
+  "author": "locus-owner",
+  "purpose": "Search the web and fetch pages with the DeepSeek Search / Fetch API.",
+  "changelog": [
+    "1.0.0（2026-10-23）：首个版本"
+  ]
+}

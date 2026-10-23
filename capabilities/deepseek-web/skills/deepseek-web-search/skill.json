@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "deepseek-web-search",
+    "version": "1",
+    "displayName": "DeepSeek Web Search",
+    "description": "How to search the web and fetch pages with the DeepSeek Search / Fetch API from the shell."
+  },
+  "source": "SKILL.md"
+}
