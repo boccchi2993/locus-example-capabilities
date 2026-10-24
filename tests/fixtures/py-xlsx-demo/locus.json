@@ -1,0 +1,8 @@
+{
+  "title": "Py XLSX Demo",
+  "author": "boccchi2993",
+  "purpose": "TEST ONLY fixture capability carrying openpyxl and et_xmlfile from the vendor wheels.",
+  "changelog": [
+    "1.0.0（2026-10-24）：首个版本"
+  ]
+}

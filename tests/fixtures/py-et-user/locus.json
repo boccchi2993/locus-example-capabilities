@@ -1,0 +1,8 @@
+{
+  "title": "Py et_xmlfile User",
+  "author": "boccchi2993",
+  "purpose": "TEST ONLY fixture capability sharing py-et-xmlfile with py-xlsx-demo (same version, same wheel).",
+  "changelog": [
+    "1.0.0（2026-10-24）：首个版本"
+  ]
+}

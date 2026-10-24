@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "et-clash",
+    "version": "1",
+    "displayName": "et_xmlfile clash",
+    "description": "TEST ONLY fixture skill."
+  },
+  "source": "SKILL.md"
+}

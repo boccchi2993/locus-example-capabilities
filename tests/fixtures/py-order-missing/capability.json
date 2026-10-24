@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-order-missing",
+    "version": "1.0.0",
+    "displayName": "Py Order Missing",
+    "description": "TEST ONLY fixture: openpyxl declared but its dependency et_xmlfile is missing.",
+    "plugins": ["py-openpyxl"],
+    "skills": [],
+    "mcps": []
+  }
+}

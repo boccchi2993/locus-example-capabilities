@@ -1,0 +1,26 @@
+[
+  {
+    "id": "py-et-xmlfile",
+    "dist": "et_xmlfile",
+    "version": "2.0.0",
+    "filename": "et_xmlfile-2.0.0-py3-none-any.whl",
+    "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa",
+    "source": "pypi",
+    "license": "MIT",
+    "imports": ["et_xmlfile"],
+    "displayName": "et_xmlfile",
+    "description": "An implementation of lxml.xmlfile for the standard library (dependency of openpyxl)."
+  },
+  {
+    "id": "py-openpyxl",
+    "dist": "openpyxl",
+    "version": "3.1.5",
+    "filename": "openpyxl-3.1.5-py2.py3-none-any.whl",
+    "sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2",
+    "source": "pypi",
+    "license": "MIT",
+    "imports": ["openpyxl"],
+    "displayName": "openpyxl",
+    "description": "A Python library to read/write Excel 2010 xlsx/xlsm files."
+  }
+]

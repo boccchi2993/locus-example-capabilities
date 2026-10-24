@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-xlsx-demo",
+    "version": "1.0.0",
+    "displayName": "Py XLSX Demo",
+    "description": "TEST ONLY fixture capability carrying openpyxl and et_xmlfile from the vendor wheels.",
+    "plugins": ["py-et-xmlfile", "py-openpyxl"],
+    "skills": ["xlsx-demo"],
+    "mcps": []
+  }
+}
