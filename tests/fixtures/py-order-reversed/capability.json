@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-order-reversed",
+    "version": "1.0.0",
+    "displayName": "Py Order Reversed",
+    "description": "TEST ONLY fixture: plugins listed in the WRONG dependency order (openpyxl before et_xmlfile).",
+    "plugins": ["py-openpyxl", "py-et-xmlfile"],
+    "skills": [],
+    "mcps": []
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "title": "Py et_xmlfile Version Clash",
+  "author": "boccchi2993",
+  "purpose": "TEST ONLY fixture carrying its OWN py-et-xmlfile plugin at a DIFFERENT version than the vendor (2.0.1 vs 2.0.0).",
+  "changelog": [
+    "1.0.0（2026-10-24）：首个版本"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-et-user",
+    "version": "1.0.0",
+    "displayName": "Py et_xmlfile User",
+    "description": "TEST ONLY fixture capability sharing py-et-xmlfile with py-xlsx-demo (same version, same wheel).",
+    "plugins": ["py-et-xmlfile"],
+    "skills": ["et-user"],
+    "mcps": []
+  }
+}

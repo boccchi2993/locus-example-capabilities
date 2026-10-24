@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-order-ok",
+    "version": "1.0.0",
+    "displayName": "Py Order OK",
+    "description": "TEST ONLY fixture: plugins listed in the correct dependency order (et_xmlfile before openpyxl).",
+    "plugins": ["py-et-xmlfile", "py-openpyxl"],
+    "skills": [],
+    "mcps": []
+  }
+}

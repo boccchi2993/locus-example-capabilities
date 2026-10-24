@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-shadow-six",
+    "version": "1.0.0",
+    "displayName": "Py Shadow Six",
+    "description": "TEST ONLY fixture: declares py-six, which shadows a runtime-preinstalled package.",
+    "plugins": ["py-six"],
+    "skills": [],
+    "mcps": []
+  }
+}

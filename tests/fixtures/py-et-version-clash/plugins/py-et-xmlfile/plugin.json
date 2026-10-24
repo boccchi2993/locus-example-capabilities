@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "plugin": {
+    "id": "py-et-xmlfile",
+    "version": "2.0.1",
+    "displayName": "et_xmlfile (clash)",
+    "description": "TEST ONLY self-written py-et-xmlfile plugin at a different version than the vendor wheel.",
+    "runtime": "python",
+    "authority": "none",
+    "provides": {
+      "pythonImports": ["et_xmlfile"]
+    }
+  },
+  "artifacts": [
+    {
+      "path": "artifacts/et_xmlfile-2.0.1-py3-none-any.whl",
+      "format": "python-wheel"
+    }
+  ]
+}

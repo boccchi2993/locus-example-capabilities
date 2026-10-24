@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "et-user",
+    "version": "1",
+    "displayName": "et_xmlfile user",
+    "description": "TEST ONLY fixture skill."
+  },
+  "source": "SKILL.md"
+}
