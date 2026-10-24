@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "charts",
+    "version": "1",
+    "displayName": "Charts",
+    "description": "How to draw clean SVG charts (line, bar, pie, scatter) with Python's standard library only."
+  },
+  "source": "SKILL.md"
+}
