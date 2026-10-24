@@ -6,6 +6,7 @@ Locus 的官方示例能力包（.locus）仓库（见 locus-product DECISIONS D
 ## 能力列表
 
 - **deepseek-web** — 用 DeepSeek Search / Fetch API 搜索网页、抓取页面正文（需要 DeepSeek API key）。
+- **charts** — 用 Python 标准库把表格和数字画成干净的 SVG 图表（折线、柱状、饼图、散点）。
 
 ## 构建与检查
 

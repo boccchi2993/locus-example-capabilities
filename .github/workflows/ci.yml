@@ -7,7 +7,7 @@ on:
 
 jobs:
   ci:
-    name: build + test + check (Node 24)
+    name: build + test + check (Node 24 + Python 3.12)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -17,8 +17,19 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # tests/charts.test.mjs 用 CPython 3.12 运行 SKILL.md 里的 python 代码块
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       # github: 依赖通过 lockfile 解析——干净 checkout 只凭 manifest + lockfile 安装
       - run: npm ci
       - run: npm test
       - run: npm run build
       - run: npm run check
+      - name: Upload charts sample SVGs (test artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: charts-samples
+          path: artifacts/charts
+          if-no-files-found: ignore
