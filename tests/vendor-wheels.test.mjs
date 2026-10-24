@@ -91,20 +91,25 @@ function makeTempVendor() {
 
 // ---------- VW3 平台标签 ----------
 {
-  // 与 runtime 计划中的 RT-ABI AB3 同类的例子组：D13 第 3 条规则
-  // （纯 Python none-any 或 cp312 + pyodide_2024_0_wasm32）。
+  // 与 runtime RT-ABI 同类的例子组：D13 第 3 条规则（纯 Python
+  // abi none + platform any，或 python 与 abi 标签都含 cp312 且 platform
+  // 恰为 pyodide_2024_0_wasm32——与 runtime feat/python-abi-export 的
+  // wheelPlatformCompatible 语义一致）。
   const cases = [
     ['openpyxl-3.1.5-py2.py3-none-any.whl', true, '纯 Python（多 python tag）'],
     ['et_xmlfile-2.0.0-py3-none-any.whl', true, '纯 Python'],
     ['foo-1.0-py3-none-any.whl', true, '纯 Python'],
     ['lxml-5.2.1-cp312-cp312-pyodide_2024_0_wasm32.whl', true, 'Pyodide 原生 wheel（当前 ABI）'],
     ['pandas-2.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl', true, 'Pyodide 原生 wheel（平台兼容；遮盖另查）'],
+    ['foo-1.0-1-cp312-cp312-pyodide_2024_0_wasm32.whl', true, '带数字开头的 build tag'],
     ['foo-1.0-cp311-cp311-pyodide_2024_0_wasm32.whl', false, 'python ABI 不是 cp312'],
+    ['foo-1.0-cp312-abi3-pyodide_2024_0_wasm32.whl', false, 'abi 标签不含 cp312'],
     ['foo-1.0-cp312-cp312-pyodide_2025_0_wasm32.whl', false, 'pyodide ABI 不是 2024_0'],
     ['foo-1.0-cp312-cp312-emscripten_3_1_58_wasm32.whl', false, '旧 emscripten 平台标签'],
     ['foo-1.0-cp312-cp312-linux_x86_64.whl', false, 'linux 原生'],
     ['foo-1.0-cp312-cp312-win_amd64.whl', false, 'windows 原生'],
     ['foo-1.0-py3-none-win_amd64.whl', false, 'abi none 但平台不是 any'],
+    ['foo-1.0-cp312-cp312-pyodide_2024_0_wasm32-x86_64.whl', false, '6 段但 build tag 不以数字开头'],
     ['foo-1.0-py3-none-any.tar.gz', false, '不是 wheel 文件名'],
     ['not-a-wheel.txt', false, '不是 wheel 文件名'],
   ];

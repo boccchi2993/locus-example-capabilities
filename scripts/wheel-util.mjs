@@ -10,10 +10,9 @@
 //    4. wheel 内 .dist-info/METADATA 的最小 ZIP 读取器 +
 //       PEP 508 环境标记求值（Pyodide worker 环境）
 //
-//  TODO(runtime-export)：第 2、3 块的规则与清单目前在本仓库写死。
-//  待 runtime PR（导出 Pyodide 版本 / ABI / wheelPlatformCompatible /
-//  预装包清单）合并、product 锁定版本升级后，改为引用 runtime 导出，
-//  见 TODO.md。
+//  TODO(runtime-export)：第 2、3 块的规则与清单目前在本仓库写死（语义
+//  与 runtime feat/python-abi-export 的导出一字不差）。待 runtime PR
+//  合并、product 锁定版本升级后，改为引用 runtime 导出，见 TODO.md。
 // ============================================================
 
 import zlib from 'node:zlib';
@@ -36,25 +35,43 @@ export const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9._-]*$/;
 
 // ---------- 2. wheel 文件名 + 平台标签 ----------
 
-// wheel 文件名：<dist>-<version>-<python tag>-<abi tag>-<platform tag>.whl
-// （dist / version 本身不含 -；暂不支持 build tag 的罕见文件名）
+// PEP 427 wheel 文件名：{dist}-{version}(-{build})?-{python}-{abi}-{platform}.whl
+// dist / version 不含 -（下划线转义），5 段或 6 段（第 6 段是 build tag，
+// 必须以数字开头）；其余形状返回 null。
+// 与 runtime feat/python-abi-export 的 parseWheelFilename 同语义。
 export function parseWheelFilename(filename) {
-  const m = /^([^-]+)-([^-]+)-([^-]+)-([^-]+)-([^-]+)\.whl$/.exec(String(filename));
-  if (!m) return null;
-  return { dist: m[1], version: m[2], pythonTag: m[3], abiTag: m[4], platformTag: m[5] };
+  if (typeof filename !== 'string' || !filename.endsWith('.whl')) return null;
+  const parts = filename.slice(0, -'.whl'.length).split('-');
+  if (parts.length < 5 || parts.length > 6 || parts.some((p) => !p)) return null;
+  let build = null;
+  let python = parts[2];
+  let abi = parts[3];
+  let platform = parts[4];
+  if (parts.length === 6) {
+    build = parts[2];
+    if (!/^\d[^-]*$/.test(build)) return null;
+    python = parts[3];
+    abi = parts[4];
+    platform = parts[5];
+  }
+  return { dist: parts[0], version: parts[1], build, python, abi, platform };
 }
 
-// D13 第 3 条：wheel 必须是纯 Python（*-none-any）或与当前 runtime ABI
-// 一致（cp312 + pyodide_2024_0_wasm32）。
-// TODO(runtime-export)：规则写死在本仓库，待 runtime 导出后改为引用。
+// D13 第 3 条：wheel 必须是纯 Python（abi none + platform any）或与当前
+// runtime ABI 一致（python 与 abi 标签都含 cp312，platform 恰为
+// pyodide_2024_0_wasm32）。语义与 runtime feat/python-abi-export 的
+// wheelPlatformCompatible(...).ok 完全一致（该实现按 runtime 预装清单
+// 在模块加载时推导 ABI 身份；这里写死的 cp312 / pyodide_2024_0_wasm32
+// 就是当前清单 pandas-2.2.0-cp312-cp312-pyodide_2024_0_wasm32 的标签）。
+// TODO(runtime-export)：待 runtime PR 合并、product 锁定版本升级后改为
+// 引用 runtime 导出（本函数只剩一层薄委托），见 TODO.md。
 export function wheelPlatformCompatible(filename) {
   const parsed = parseWheelFilename(filename);
   if (!parsed) return false;
-  const pythons = parsed.pythonTag.split('.');
-  const abis = parsed.abiTag.split('.');
-  const platforms = parsed.platformTag.split('.');
-  if (abis.includes('none') && platforms.includes('any')) return true; // 纯 Python
-  return pythons.includes('cp312') && platforms.includes('pyodide_2024_0_wasm32');
+  if (parsed.platform === 'any' && parsed.abi === 'none') return true; // 纯 Python
+  return parsed.python.indexOf('cp312') !== -1
+    && parsed.abi.indexOf('cp312') !== -1
+    && parsed.platform === 'pyodide_2024_0_wasm32';
 }
 
 // ---------- 3. runtime 预装包清单 ----------
