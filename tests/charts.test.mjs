@@ -1,17 +1,26 @@
-// charts 能力测试（CH1–CH2）：
+// charts 能力测试（CH1–CH4）：
 //   CH1  构建 dist/charts-1.0.0.locus、两次构建字节相同、inspect 通过
 //        （ok / kind 'new' / mismatched 空、恰好 1 个 skill "charts"、0 个 plugin）、
 //        skill 规范检查通过。
-//   CH2  提取 SKILL.md 中全部 ```python 代码块，按顺序拼接后用 CPython 3
-//        （python3 -I，独立临时目录；把代码中的 OUT_DIR="/mnt/download" 一行
-//        重映射为临时 download 目录）运行。要求：
+//   CH2  从 SKILL.md 提取 ```python 代码块并按小节分类：Helper library 小节恰好
+//        1 块、Examples 小节 >= 3 块。测试自备一份 CSV（旧版由示例自己生成
+//        demo-sample.csv；示例现在只读 /mnt/upload 占位路径），先运行 Helper
+//        library 块、再按文档顺序运行 Examples 小节的代码块（OUT_DIR 重映射到
+//        临时 download 目录、CSV_PATH 重映射到测试自备的 CSV），用 CPython 3
+//        （python3 -I）运行。要求与旧版一致——断言不放宽，只是触发方式从
+//        “帮助函数块顺带生成 4 张图”改为“显式运行 Examples 小节”：
 //          - 生成 ≥4 个 SVG，demo-line/bar/pie/scatter.svg 四种图各一个；
 //          - 每个 SVG 都能被 xml.etree.ElementTree 解析，根元素是 svg 且有 viewBox；
 //          - 用含 <、&、中文的标题再生成一次，解析仍成功且原文出现在 SVG 文本中
 //            （转义正确，原始字节里是 &lt;/&amp; 实体）；
 //          - 除 pandas 例外（当前 Python 没有 pandas 时该代码块单独跳过并在
 //            测试输出里写明原因），不导入标准库以外的模块。
-//        生成的 SVG 与拼接脚本复制到 artifacts/charts/ 供 CI 上传为测试产物。
+//   CH3  Helper library 块单独运行后，输出目录里没有任何文件（块只定义函数与
+//        常量，不写任何文件）。
+//   CH4  SKILL.md 静态检查：写文件的帮助函数（save_chart）调用只允许出现在
+//        Examples 小节的代码块里；Examples 小节带“改写后再运行、不要原样运行”
+//        的警示。
+//   生成的 SVG 与运行脚本复制到 artifacts/charts/ 供 CI 上传为测试产物。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -74,15 +83,31 @@ check('CH1: exactly 1 skill "charts" and 0 plugins',
 check('CH1: no skill spec violations',
   checkSkillSpecs(capabilityDir).length === 0, JSON.stringify(checkSkillSpecs(capabilityDir)));
 
-// --- CH2：提取并运行 SKILL.md 的 python 代码块 ---
+// --- CH2（静态）：提取 SKILL.md 的 python 代码块并按所在小节分类 ---
 const md = fs.readFileSync(skillMdPath, 'utf8').replace(/\r\n/g, '\n');
+const headings = [...md.matchAll(/^## .*$/gm)].map((m) => ({ idx: m.index, text: m[0] }));
+function sectionOf(charIdx) {
+  let cur = '(preamble)';
+  for (const h of headings) {
+    if (h.idx < charIdx) cur = h.text;
+    else break;
+  }
+  return cur;
+}
 const blocks = [];
 {
   const re = /^```python\n([\s\S]*?)^```/gm;
   let m;
-  while ((m = re.exec(md)) !== null) blocks.push(m[1]);
+  while ((m = re.exec(md)) !== null) blocks.push({ code: m[1], start: m.index });
 }
-check('CH2: SKILL.md has >= 3 python blocks', blocks.length >= 3, String(blocks.length));
+const helperBlocks = blocks.filter((b) => sectionOf(b.start) === '## Helper library');
+const examplesHeading = headings.find((h) => h.text.startsWith('## Examples'));
+const exampleBlocks = blocks.filter((b) => sectionOf(b.start).startsWith('## Examples'));
+check('CH2: Helper library section has exactly one python block',
+  helperBlocks.length === 1, String(helperBlocks.length));
+check('CH2: Examples section exists', Boolean(examplesHeading));
+check('CH2: Examples section has >= 3 python blocks', exampleBlocks.length >= 3,
+  String(exampleBlocks.length));
 
 function findPython() {
   const candidates = process.env.PYTHON ? [process.env.PYTHON, 'python3', 'python']
@@ -127,37 +152,61 @@ if (py) {
   pandasOk = spawnSync(py.cmd, ['-I', '-c', 'import pandas'], { encoding: 'utf8' }).status === 0;
 }
 
-const runnable = [];
+// 逐块 import 扫描（覆盖 SKILL.md 全部 python 块，不只是本次运行的块）
 let pandasSkipped = 0;
+const examplesRunnable = [];
 for (let i = 0; i < blocks.length; i++) {
-  const mods = [...importsOf(blocks[i])];
-  const hasPandas = /^\s*(?:import\s+pandas|from\s+pandas)\b/m.test(blocks[i]);
+  const code = blocks[i].code;
+  const mods = [...importsOf(code)];
+  const hasPandas = /^\s*(?:import\s+pandas|from\s+pandas)\b/m.test(code);
   const bad = mods.filter((m) => !stdlib.has(m) && !(m === 'pandas' && hasPandas));
   check('CH2: python block ' + (i + 1) + ' imports only allowed modules',
     bad.length === 0, JSON.stringify({ imports: mods, unexpected: bad }));
-  if (hasPandas && !pandasOk) {
-    pandasSkipped++;
-    console.log('SKIP CH2: python block ' + (i + 1)
-      + ' 跳过 —— 该代码块演示 pandas 读取 DataFrame，当前 Python 环境没有 pandas'
-      + '（CI 的 setup-python 3.12 不装 pandas）；其余代码块照常运行');
-    continue;
+  if (sectionOf(blocks[i].start).startsWith('## Examples')) {
+    if (hasPandas && !pandasOk) {
+      pandasSkipped++;
+      console.log('SKIP CH2: python block ' + (i + 1)
+        + ' 跳过 —— 该代码块演示 pandas 读取 DataFrame，当前 Python 环境没有 pandas'
+        + '（CI 的 setup-python 3.12 不装 pandas）；其余代码块照常运行');
+      continue;
+    }
+    examplesRunnable.push(code);
   }
-  runnable.push(blocks[i]);
 }
 check('CH2: pandas demo handled (run or explicit skip)', pandasSkipped <= 1,
   String(pandasSkipped));
 
+const OUT_DIR_LINE = 'OUT_DIR = "/mnt/download"';
+const CSV_PATH_LINE = 'CSV_PATH = "/mnt/upload/<user-file>.csv"';
+
+// --- CH2（运行）：Helper library 块 + Examples 小节按文档顺序执行 ---
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'charts-test-'));
 const outDir = path.join(tmp, 'download');
 fs.mkdirSync(outDir, { recursive: true });
 
 let script = null;
-if (py) {
-  script = runnable.join('\n\n# ---- next SKILL.md python block ----\n\n');
-  const original = 'OUT_DIR = "/mnt/download"';
-  const hits = script.split(original).length - 1;
-  check('CH2: OUT_DIR constant appears exactly once for remapping', hits === 1, String(hits));
-  script = script.replace(original, 'OUT_DIR = ' + JSON.stringify(outDir.replaceAll('\\', '/')));
+if (py && helperBlocks.length === 1) {
+  // 测试自备 CSV（列 category/minutes，60 行），映射进示例的 CSV_PATH 占位路径
+  const uploadsDir = path.join(tmp, 'uploads');
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  const csvPath = path.join(uploadsDir, 'apps.csv');
+  const csvLines = ['category,minutes'];
+  for (let i = 0; i < 60; i++) {
+    csvLines.push('app-' + String(i).padStart(2, '0') + ','
+      + (120 / (i + 1) + (i * 7) % 13).toFixed(1));
+  }
+  fs.writeFileSync(csvPath, csvLines.join('\n') + '\n', 'utf8');
+
+  script = [helperBlocks[0].code, ...examplesRunnable]
+    .join('\n\n# ---- next SKILL.md python block ----\n\n');
+  const outHits = script.split(OUT_DIR_LINE).length - 1;
+  check('CH2: OUT_DIR constant appears exactly once for remapping', outHits === 1, String(outHits));
+  script = script.replace(OUT_DIR_LINE, 'OUT_DIR = ' + JSON.stringify(outDir.replaceAll('\\', '/')));
+  const csvHits = script.split(CSV_PATH_LINE).length - 1;
+  check('CH2: CSV placeholder path appears exactly once for remapping', csvHits === 1,
+    String(csvHits));
+  script = script.replace(CSV_PATH_LINE,
+    'CSV_PATH = ' + JSON.stringify(csvPath.replaceAll('\\', '/')));
   const scriptPath = path.join(tmp, 'skill-blocks.py');
   fs.writeFileSync(scriptPath, script, 'utf8');
   const run = spawnSync(py.cmd, ['-I', scriptPath], {
@@ -166,7 +215,7 @@ if (py) {
   });
   check('CH2: concatenated python blocks exit 0', run.status === 0,
     (run.stderr || '').slice(-800) || 'status ' + run.status);
-  check('CH2: helpers reported saved files', /saved .+demo-line\.svg/.test(run.stdout || ''), '');
+  check('CH2: examples reported saved files', /saved .+demo-line\.svg/.test(run.stdout || ''), '');
 
   // ElementTree 验证（在 Python 里做，Node 侧不解析 XML）
   const verifier = `
@@ -244,6 +293,56 @@ print("PIE_PCT", "%" in pie)
     fs.copyFileSync(path.join(outDir, f), path.join(artifactsDir, f));
   }
   fs.copyFileSync(scriptPath, path.join(artifactsDir, 'skill-blocks.py'));
+}
+
+// --- CH3：Helper library 块单独运行后，输出目录里没有任何文件 ---
+if (py && helperBlocks.length === 1) {
+  const tmpHelper = fs.mkdtempSync(path.join(os.tmpdir(), 'charts-helper-'));
+  const helperOutDir = path.join(tmpHelper, 'download');
+  fs.mkdirSync(helperOutDir, { recursive: true });
+  const helperScript = helperBlocks[0].code.replace(
+    OUT_DIR_LINE, 'OUT_DIR = ' + JSON.stringify(helperOutDir.replaceAll('\\', '/')));
+  const helperScriptPath = path.join(tmpHelper, 'helper-block.py');
+  fs.writeFileSync(helperScriptPath, helperScript, 'utf8');
+  const runHelper = spawnSync(py.cmd, ['-I', helperScriptPath], {
+    cwd: tmpHelper, encoding: 'utf8', timeout: 120000,
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+  });
+  check('CH3: helper block alone exits 0', runHelper.status === 0,
+    (runHelper.stderr || '').slice(-800) || 'status ' + runHelper.status);
+  check('CH3: helper block alone writes no files', fs.readdirSync(helperOutDir).length === 0,
+    JSON.stringify(fs.readdirSync(helperOutDir)));
+  check('CH3: helper block alone prints no saved paths',
+    !/\bsaved\b/.test(runHelper.stdout || ''), (runHelper.stdout || '').slice(0, 200));
+  fs.mkdirSync(artifactsDir, { recursive: true });
+  fs.copyFileSync(helperScriptPath, path.join(artifactsDir, 'helper-block.py'));
+}
+
+// --- CH4：写文件的帮助函数（save_chart）调用只允许出现在 Examples 小节 ---
+{
+  const violations = [];
+  const outsideBlocks = blocks.filter((b) => !exampleBlocks.includes(b));
+  for (const b of outsideBlocks) {
+    b.code.split('\n').forEach((line, i) => {
+      if (line.trim().startsWith('def ')) return; // 定义行不算调用
+      if (/\bsave_chart\s*\(/.test(line)) {
+        violations.push('python block line ' + (i + 1) + ': ' + line.trim().slice(0, 80));
+      }
+    });
+  }
+  check('CH4: no file-writing helper calls outside the Examples section',
+    violations.length === 0, JSON.stringify(violations));
+  const exEnd = examplesHeading
+    ? (() => {
+        const next = headings.find((h) => h.idx > examplesHeading.idx);
+        return next ? next.idx : md.length;
+      })()
+    : 0;
+  const examplesText = examplesHeading ? md.slice(examplesHeading.idx, exEnd) : '';
+  check('CH4: Examples section warns not to run as-is',
+    /do not run them as-is/.test(examplesText), 'Examples 小节缺少警示句');
+  check('CH4: Examples section demonstrates save_chart',
+    exampleBlocks.some((b) => /\bsave_chart\s*\(/.test(b.code)));
 }
 
 console.log('charts.test: ' + passed + ' passed, ' + failed + ' failed');

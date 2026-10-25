@@ -13,10 +13,14 @@ other commands, no backslash line continuations.
 - Python has the standard library plus pandas (with numpy). No matplotlib, no Pillow, no network.
 - Writable paths: `/mnt/download` (user output), `/mnt/workspace`, `/tmp`; `/mnt/upload` (uploads)
   is read-only. Helpers write to `OUT_DIR = "/mnt/download"`; `save_chart(..., out_dir=...)` overrides it.
+- Helpers defined in an earlier block stay available while the Python worker is alive. If a later
+  block fails with NameError (for example `name 'line_chart' is not defined`), the worker was
+  restarted: run the Helper library block again, then retry.
 
 ## Helper library
 
-Run this block once, then reuse the helpers in later blocks; it ends by drawing one demo of each chart type into `/mnt/download`.
+Run this block once, then reuse the helpers in later blocks. This block only defines constants
+and functions — it writes no files. See the Examples section for how to call them.
 
 ```python
 import math
@@ -170,6 +174,24 @@ def save_chart(svg, name, out_dir=None):
         f.write(svg)
     print("saved " + p)
     return p
+```
+
+Every chart has a title, axes with round ticks, a legend and the fixed colorblind-safe
+palette above; all text goes through `esc()`; the root carries `viewBox` + `width="100%"`
+so the chart scales on a phone; the font stack includes PingFang SC / Microsoft YaHei, so
+Chinese labels render. `line_chart` takes multiple series on a category x-axis, `bar_chart`
+draws grouped bars, `pie_chart` lists every slice in the legend with value and percent, and
+`scatter_chart` needs numeric x. Keep pie slices to ~8 and series names short (one-row legend).
+
+## Examples
+
+These blocks are usage examples of the helpers above. Adapt each one to the user's real
+data before running — do not run them as-is: as written they write demo files into
+`/mnt/download`.
+
+### One of each chart type
+
+```python
 save_chart(line_chart("Monthly revenue by region — H1 2026",
             [("North", [120, 135, 148, 141, 163, 178]), ("South", [98, 104, 111, 129, 122, 140])],
             xlabels=["Jan", "Feb", "Mar", "Apr", "May", "Jun"]), "demo-line.svg")
@@ -184,14 +206,7 @@ save_chart(scatter_chart("Height vs weight",
              ("B", [1.4, 1.6, 1.75, 1.85], [45, 62, 70, 78])]), "demo-scatter.svg")
 ```
 
-Every chart has a title, axes with round ticks, a legend and the fixed colorblind-safe
-palette above; all text goes through `esc()`; the root carries `viewBox` + `width="100%"`
-so the chart scales on a phone; the font stack includes PingFang SC / Microsoft YaHei, so
-Chinese labels render. `line_chart` takes multiple series on a category x-axis, `bar_chart`
-draws grouped bars, `pie_chart` lists every slice in the legend with value and percent, and
-`scatter_chart` needs numeric x. Keep pie slices to ~8 and series names short (one-row legend).
-
-## Titles and labels with special characters
+### Titles and labels with special characters
 
 `esc()` handles `<`, `&`, quotes and any language — pass raw strings, never pre-escape:
 
@@ -201,22 +216,20 @@ save_chart(line_chart('营收 <草稿> & 修正 · 2026',
                       xlabels=["一月", "二月", "三月", "四月"]), "demo-escaping.svg")
 ```
 
-## From a CSV, and when there are too many categories
+### From a CSV, and when there are too many categories
 
-Read CSVs with the `csv` module (a user-provided file usually sits in `/mnt/upload`). When a
-categorical axis would carry more categories than fit — a common case is > 50 — aggregate first
-with `top_n_other` (top N plus one "Other" bucket) instead of drawing them all:
+Read CSVs with the `csv` module. A user-provided file sits in `/mnt/upload` — `CSV_PATH`
+below is a placeholder: point it at the real upload and adjust the column names before
+running. When a categorical axis would carry more categories than fit — a common case is
+> 50 — aggregate first with `top_n_other` (top N plus one "Other" bucket) instead of
+drawing them all:
 
 ```python
 import csv
-import os
 
-csv_path = os.path.join(OUT_DIR, "demo-sample.csv")  # use a /mnt/upload path for real data
-with open(csv_path, "w", newline="", encoding="utf-8") as f:
-    wr = csv.writer(f); wr.writerow(["category", "minutes"])
-    for i in range(60):
-        wr.writerow([f"app-{i:02d}", round(120 / (i + 1) + (i * 7) % 13, 1)])
-with open(csv_path, encoding="utf-8") as f:
+# placeholder — replace with the user's real /mnt/upload CSV before running
+CSV_PATH = "/mnt/upload/<user-file>.csv"
+with open(CSV_PATH, encoding="utf-8") as f:
     rows = list(csv.DictReader(f))
 labels, values = top_n_other([r["category"] for r in rows], [float(r["minutes"]) for r in rows], n=12)
 svg = bar_chart("Screen time by app (top 12 + Other)", labels, [("minutes", values)])
@@ -226,7 +239,7 @@ save_chart('<!doctype html><meta charset="utf-8"><title>Screen time</title>'
            "demo-report.html")  # wrap the SVG in HTML when it sits next to text
 ```
 
-## From a pandas DataFrame
+### From a pandas DataFrame
 
 ```python
 import pandas as pd
