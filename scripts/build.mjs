@@ -10,6 +10,10 @@
 //    -> repinManifest 生成 locus-manifest（files 清单 + sha256）
 //    -> renderLocusMd -> writeLocusArchive
 //
+//  D13 第三方 wheel：plugins 里 py- 开头、能力目录下没有 plugins/<id>/
+//  的 id，从 vendor/wheels.json 生成 plugin.json + wheel 写进内存工作区
+//  （materializeVendorPlugins），再进入同一条打包管线；不写回源码目录。
+//
 //  用法：
 //    node scripts/build.mjs [<id> ...]   # 不带参数时构建 capabilities/ 全部
 //
@@ -32,6 +36,8 @@ import {
   writeLocusArchive,
 } from 'locus-browser-agent-runtime/src/locus-archive.js';
 import { createMemoryWorkspace } from 'locus-browser-agent-runtime/src/product/runtime-api.js';
+
+import { loadVendorEntries, readVendorWheel, vendorPluginManifest } from './vendor.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const capabilitiesDir = path.join(repoRoot, 'capabilities');
@@ -101,6 +107,38 @@ function collectPackageFiles(sourceDir, workspace) {
   walk(sourceDir, '');
 }
 
+// D13：capability.json 的 plugins 里以 py- 开头的 id，若能力目录下没有
+// 自己的 plugins/<id>/，就从 vendor/wheels.json 生成 plugin.json 并把
+// vendor/wheels/ 里的 wheel 复制进工作区——只存在于构建过程的内存工作
+// 区，不写回源码目录。能力自带 plugins/<id>/ 的照原样使用（自研 plugin
+// 优先）。vendor 里也没有的 id 交由 buildProject 以 package_ref_missing
+// 拒绝。生成内容全部来自清单与 vendor 字节，两次构建结果相同。
+async function materializeVendorPlugins(sourceDir, workspace) {
+  const capability = JSON.parse(fs.readFileSync(path.join(sourceDir, 'capability.json'), 'utf8'));
+  const declared = capability && capability.capability && Array.isArray(capability.capability.plugins)
+    ? capability.capability.plugins
+    : [];
+  const pyIds = declared.filter((id) => typeof id === 'string' && id.startsWith('py-'));
+  if (!pyIds.length) return;
+  const entries = loadVendorEntries(repoRoot);
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  for (const id of pyIds) {
+    const manifestRel = 'plugins/' + id + '/plugin.json';
+    let hasLocal = false;
+    try {
+      const st = await workspace.stat(manifestRel);
+      hasLocal = st.kind === 'file';
+    } catch (e) {
+      if (!(e && (e.name === 'NotFoundError' || e.name === 'TypeMismatchError'))) throw e;
+    }
+    if (hasLocal) continue;
+    const entry = byId.get(id);
+    if (!entry) continue;
+    workspace.write(manifestRel, Buffer.from(JSON.stringify(vendorPluginManifest(entry), null, 2) + '\n'));
+    workspace.write('plugins/' + id + '/artifacts/' + entry.filename, readVendorWheel(repoRoot, entry));
+  }
+}
+
 // 构建一个能力目录 -> { id, version, bytes, manifest }。
 // sourceDir 必须直接包含 capability.json 与 locus.json。
 export async function buildCapability(sourceDir) {
@@ -114,6 +152,7 @@ export async function buildCapability(sourceDir) {
     maxFileBytes: LOCUS_LIMITS.maxFileBytes,
   });
   collectPackageFiles(sourceDir, workspace);
+  await materializeVendorPlugins(sourceDir, workspace);
 
   const built = await buildProject({ workspace, root: '' });
   if (!built.ok) {

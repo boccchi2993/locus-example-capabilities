@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "xlsx-demo",
+    "version": "1",
+    "displayName": "XLSX demo",
+    "description": "TEST ONLY fixture skill for the vendor-wheel build."
+  },
+  "source": "SKILL.md"
+}

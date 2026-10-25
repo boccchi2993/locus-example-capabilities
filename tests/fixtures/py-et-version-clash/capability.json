@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "py-et-version-clash",
+    "version": "1.0.0",
+    "displayName": "Py et_xmlfile Version Clash",
+    "description": "TEST ONLY fixture carrying its OWN py-et-xmlfile plugin at a DIFFERENT version than the vendor (2.0.1 vs 2.0.0).",
+    "plugins": ["py-et-xmlfile"],
+    "skills": ["et-clash"],
+    "mcps": []
+  }
+}
