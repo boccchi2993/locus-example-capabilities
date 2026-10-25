@@ -25,8 +25,22 @@ Pyodide 0.26.4 / CPython 3.12.1 / abi 2024_0 / emscripten_3_1_58 / wasm32，
 
 ## 当前清单的来源说明
 
-openpyxl 3.1.5 与 et_xmlfile 2.0.0 都是纯 Python wheel（`none-any`），
-Pyodide 0.26.4 的 pyodide-lock.json 不含这两个发行包，因此 `source` 一律为
-`"pypi"`，sha256 以 PyPI JSON API 公布的 `digests.sha256` 为准
-（`npm run verify-vendor` 在线核验）。将来加入 Pyodide 官方编译的原生 wheel
-时，`source` 取 `"pyodide-lock"`，sha256 以本目录 lock 文件的记录为准。
+清单共 9 项（`wheels.json`），分两类：
+
+- **纯 Python wheel（`none-any`，`source: "pypi"`）**：openpyxl 3.1.5、
+  et_xmlfile 2.0.0、typing_extensions 4.16.0、XlsxWriter 3.3.0、
+  python-docx 1.2.0、python-pptx 1.0.2、pypdf 6.21.2。
+  Pyodide 0.26.4 的 pyodide-lock.json 不含这些发行包，sha256 以 PyPI JSON
+  API 公布的 `digests.sha256` 为准（`npm run verify-vendor` 在线核验）。
+- **Pyodide 官方编译的原生 wheel（cp312 + `pyodide_2024_0_wasm32`，
+  `source: "pyodide-lock"`）**：lxml 5.2.1、pillow 10.2.0。sha256 与文件名
+  以本目录 lock 文件的记录为准（lock 里 `depends` 均为空）。
+
+各 wheel 的 METADATA `License` / `License-Expression`（即 `wheels.json` 的
+`license` 字段）：lxml、pypdf 为 BSD-3-Clause，XlsxWriter 为 BSD-2-Clause，
+openpyxl、et_xmlfile、python-docx、python-pptx 为 MIT，pillow 为 HPND，
+typing_extensions 为 PSF-2.0。
+
+lxml 与 pillow 的下载来源是 Pyodide 官方 CDN
+`https://cdn.jsdelivr.net/pyodide/v0.26.4/full/<file_name>`；pypi 类 wheel
+的下载来源是 PyPI JSON API `urls[].url`（files.pythonhosted.org）。

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "closure-pdf",
+    "version": "1.0.0",
+    "displayName": "Closure PDF",
+    "description": "TEST ONLY fixture: dependency closure for the future pdf capability (pypdf, no extra deps under Python 3.12).",
+    "plugins": [
+      "py-pypdf"
+    ],
+    "skills": [],
+    "mcps": []
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "closure-image",
+    "version": "1.0.0",
+    "displayName": "Closure Image",
+    "description": "TEST ONLY fixture: dependency closure for the future image capability (pillow, no extra deps).",
+    "plugins": [
+      "py-pillow"
+    ],
+    "skills": [],
+    "mcps": []
+  }
+}

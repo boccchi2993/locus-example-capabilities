@@ -1,0 +1,8 @@
+{
+  "title": "Closure PPTX",
+  "author": "boccchi2993",
+  "purpose": "TEST ONLY fixture: dependency closure for the future pptx capability (python-pptx + lxml + pillow + typing_extensions + XlsxWriter).",
+  "changelog": [
+    "1.0.0（2026-10-25）：TEST ONLY closure fixture（vendor batch 2）"
+  ]
+}

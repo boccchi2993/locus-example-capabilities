@@ -1,0 +1,8 @@
+{
+  "title": "Closure PDF",
+  "author": "boccchi2993",
+  "purpose": "TEST ONLY fixture: dependency closure for the future pdf capability (pypdf, no extra deps under Python 3.12).",
+  "changelog": [
+    "1.0.0（2026-10-25）：TEST ONLY closure fixture（vendor batch 2）"
+  ]
+}

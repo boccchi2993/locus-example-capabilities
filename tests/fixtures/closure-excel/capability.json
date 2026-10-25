@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "closure-excel",
+    "version": "1.0.0",
+    "displayName": "Closure Excel",
+    "description": "TEST ONLY fixture: dependency closure for the future excel capability (openpyxl + et_xmlfile + XlsxWriter).",
+    "plugins": [
+      "py-et-xmlfile",
+      "py-openpyxl",
+      "py-xlsxwriter"
+    ],
+    "skills": [],
+    "mcps": []
+  }
+}
