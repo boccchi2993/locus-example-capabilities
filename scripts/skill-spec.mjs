@@ -6,6 +6,8 @@
 //       capability.json 的 credentials 中声明过。
 //    3. 使用了凭据变量的 curl，其目标 URL 必须以对应凭据的
 //       origin + pathPrefix 开头（凭据只能发往声明的作用域）。
+//    4. capability.version 必须是三段数字版本号（如 1.0.0）——版本
+//       出现在 .locus 文件名与替换确认框里，重新打包必须提升补丁位。
 //
 //  返回违规列表 [{ file, rule, message }]；空数组 = 通过。
 //  check.mjs 与测试套件共用本模块。
@@ -17,6 +19,7 @@ import path from 'node:path';
 const LITERAL_KEY_PATTERN = /sk-[A-Za-z0-9]{16,}/;
 const VAR_PATTERN = /\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g;
 const URL_PATTERN = /https?:\/\/[^\s'"`<>]+/;
+const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 function walkSkillMdFiles(dir, rel, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -55,6 +58,16 @@ export function checkSkillSpecs(capabilityDir) {
   const credentials = Array.isArray(manifest.capability && manifest.capability.credentials)
     ? manifest.capability.credentials
     : [];
+
+  const version = manifest.capability && manifest.capability.version;
+  if (typeof version === 'string' && !VERSION_PATTERN.test(version)) {
+    violations.push({
+      file: capabilityDir + '/capability.json',
+      rule: 'version-format',
+      message: capabilityDir + '/capability.json 的 capability.version 必须是三段数字版本号（如 1.0.0），得到 '
+        + JSON.stringify(version),
+    });
+  }
 
   for (const { abs, rel } of walkSkillMdFiles(capabilityDir, '', [])) {
     const text = fs.readFileSync(abs, 'utf8');

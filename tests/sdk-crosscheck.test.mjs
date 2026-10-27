@@ -5,7 +5,7 @@
 //        （capabilities/ 全部 + tests/fixtures/ 下每个能构建的夹具）。
 //   XC2  对每个夹具与能力：sdk.validate 与 JS（buildProject + skill 规范
 //        + wheel 规则）结论相同；package_* 诊断码集合相同；skill 规范
-//        规则名一一对应；wheel 规则有无错误一致。
+//        规则名一一对应（含 version-format）；wheel 规则有无错误一致。
 //   XC3  sdk.inspect 与 product 的 inspect/analyze 对同一 .locus 的
 //        id/version/author/purpose/body/组件/凭据声明/files 数/总大小/
 //        digest 一致。
@@ -145,7 +145,7 @@ async function jsPackageCodes(sourceDir) {
   }
 }
 
-const SKILL_RULE_CODES = ['literal-key', 'undeclared-variable', 'url-outside-prefix'];
+const SKILL_RULE_CODES = ['literal-key', 'undeclared-variable', 'url-outside-prefix', 'version-format'];
 const isWheelCode = (code) => code.startsWith('wheel-');
 const isPackageCode = (code) => code.startsWith('package_');
 
@@ -255,14 +255,18 @@ const canonical = (value) => {
         s.fileCount === summary.fileCount && s.totalBytes === summary.totalBytes,
         JSON.stringify({ sdk: [s.fileCount, s.totalBytes], js: [summary.fileCount, summary.totalBytes] }));
       check('XC3 ' + label + ' LOCUS.md 正文一致', s.body === summary.body);
-      const idsOf = (list) => setOf(list.map((c) => c.id));
+      // service.inspect / sdk.inspect 给对象 {id, displayName}；service.analyze
+      // 给 id 字符串数组——分别取 id 后按集合比较（旧写法把两边都映射成
+      // [null]，比较恒真，检不出任何差异）。
+      const idsOfInspect = (list) => setOf(list.map((c) => c.id));
+      const idsOfAnalyze = (list) => setOf(list);
       check('XC3 ' + label + ' 组件一致',
         sameSet(s.components.plugins.map((c) => c.id), summary.components.plugins.map((c) => c.id))
         && sameSet(s.components.skills.map((c) => c.id), summary.components.skills.map((c) => c.id))
         && sameSet(s.components.mcps.map((c) => c.id), summary.components.mcps.map((c) => c.id))
-        && sameSet(idsOf(analyze.components.plugins), idsOf(s.components.plugins.map((c) => c.id)))
-        && sameSet(idsOf(analyze.components.skills), idsOf(s.components.skills.map((c) => c.id)))
-        && sameSet(idsOf(analyze.components.mcps), idsOf(s.components.mcps.map((c) => c.id))),
+        && sameSet(idsOfAnalyze(analyze.components.plugins), idsOfInspect(s.components.plugins))
+        && sameSet(idsOfAnalyze(analyze.components.skills), idsOfInspect(s.components.skills))
+        && sameSet(idsOfAnalyze(analyze.components.mcps), idsOfInspect(s.components.mcps)),
         JSON.stringify({ sdk: s.components, js: summary.components }));
       check('XC3 ' + label + ' 凭据声明一致',
         canonical(s.credentials) === canonical(analyze.pkgInput.capability.credentials || []),
@@ -366,10 +370,10 @@ function record_json(r) {
 // ---------- XC6：SDK 自己的 wheel 可复现 ----------
 {
   const vendorWheel = path.join(repoRoot, 'vendor', 'wheels',
-    'locus_capability_sdk-1.0.0-py3-none-any.whl');
+    'locus_capability_sdk-1.1.0-py3-none-any.whl');
   const out = tmpDir('locus-xc6-');
   try {
-    const r = sdk(['build-wheel', packagesDir, 'locus-capability-sdk', '1.0.0', out,
+    const r = sdk(['build-wheel', packagesDir, 'locus-capability-sdk', '1.1.0', out,
       '--summary', 'Locus capability authoring SDK: validate projects, build deterministic '
         + 'wheels and store-only .locus packages.']);
     check('XC6 重建成功且文件名一致', r.status === 0

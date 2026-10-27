@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "spec-check",
+    "version": "1.0",
+    "displayName": "Spec Check",
+    "description": "TEST ONLY spec-violation fixture (two-part capability version).",
+    "plugins": [],
+    "skills": [
+      "spec-check"
+    ],
+    "mcps": []
+  }
+}

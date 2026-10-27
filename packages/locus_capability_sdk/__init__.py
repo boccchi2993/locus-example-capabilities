@@ -221,8 +221,9 @@ def _materialize_vendor_plugins(source_dir, files, repo_root):
 def build(project_dir, out_dir, repo_root=None):
     """Validate, then build <id>-<version>.locus into out_dir.
 
-    Returns {ok, path, sha256, bytes} on success; on validation failure
-    {ok: False, diagnostics} with NO output file. locus.json problems
+    The gate is the FULL validate() rule set (project rules, D13 wheel
+    rules, skill spec rules): on any diagnostic the function returns
+    {ok: False, diagnostics} and writes NO file. locus.json problems
     raise SdkError (same as the JS build.mjs).
     """
     source_dir = os.path.abspath(project_dir)
@@ -232,6 +233,11 @@ def build(project_dir, out_dir, repo_root=None):
     if not os.path.isfile(os.path.join(source_dir, "capability.json")):
         raise SdkError("%s: 缺少 capability.json，不是一个能力目录" % source_dir)
     meta = _read_locus_json(source_dir)
+
+    diagnostics = validate(source_dir, repo_root)
+    if diagnostics:
+        return {"ok": False, "diagnostics": diagnostics,
+                "path": None, "sha256": None, "bytes": None}
 
     files = _collect_package_files(source_dir)
     if repo_root:
