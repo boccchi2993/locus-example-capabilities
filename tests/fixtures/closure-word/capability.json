@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "closure-word",
+    "version": "1.0.0",
+    "displayName": "Closure Word",
+    "description": "TEST ONLY fixture: dependency closure for the future word capability (python-docx + lxml + typing_extensions).",
+    "plugins": [
+      "py-lxml",
+      "py-typing-extensions",
+      "py-python-docx"
+    ],
+    "skills": [],
+    "mcps": []
+  }
+}

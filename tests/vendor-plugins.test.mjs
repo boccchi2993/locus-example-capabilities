@@ -65,7 +65,12 @@ const bytesEqual = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) === 
     const read = await LA.readLocusArchive(built.bytes);
     const files = new Map(read.files);
     const entries = loadVendorEntries(repoRoot);
-    for (const entry of entries) {
+    // 逐个夹具声明的 plugin 检查（vendor 清单可以包含未引用的 wheel）。
+    const declared = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'capability.json'), 'utf8'))
+      .capability.plugins;
+    for (const id of declared) {
+      const entry = entries.find((e) => e.id === id);
+      if (!entry) throw new Error('vendor/wheels.json 里没有 ' + id);
       const rel = 'plugins/' + entry.id + '/artifacts/' + entry.filename;
       const inPackage = files.get(rel);
       check('VW6 生成的 ' + rel + ' 与 vendor 字节一致',
