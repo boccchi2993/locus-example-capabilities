@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "charts",
+    "version": "1.0.0",
+    "displayName": "Charts",
+    "description": "Turn tables and numbers into clean SVG charts (line, bar, pie, scatter) with Python's standard library.",
+    "plugins": [],
+    "skills": ["charts"],
+    "mcps": []
+  }
+}

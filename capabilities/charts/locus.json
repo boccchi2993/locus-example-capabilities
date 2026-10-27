@@ -1,0 +1,8 @@
+{
+  "title": "charts",
+  "author": "locus-owner",
+  "purpose": "Turn tables and numbers into clean SVG charts (line, bar, pie, scatter) with Python's standard library.",
+  "changelog": [
+    "1.0.0（2026-10-24）：首个版本"
+  ]
+}
