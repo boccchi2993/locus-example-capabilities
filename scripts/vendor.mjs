@@ -6,8 +6,10 @@
 // ============================================================
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 import { normalizeDistName, pluginIdForDist, parseWheelFilename, PLUGIN_ID_RE } from './wheel-util.mjs';
 
@@ -34,6 +36,8 @@ function sha256Hex(bytes) {
 // 读取并校验 vendor/wheels.json。每项：
 //   { id, dist, version, filename, sha256, source, license, imports,
 //     displayName, description }
+// source 为 "local" 的项（本仓库源码构建的 wheel，如 py-locus-capability-sdk）
+// 额外要求字符串字段 path（源码目录，相对仓库根）。
 // id 必须等于 py-<normalizeDistName(dist)> 且符合组件 id 规则；
 // filename 解析出的 dist / version 必须与字段一致。
 export function loadVendorEntries(repoRoot) {
@@ -70,8 +74,13 @@ export function loadVendorEntries(repoRoot) {
       errors.push(at + ' 的 "imports" 必须是非空字符串数组');
     }
     if (errors.length > before) return; // 该项已不完整，跳过后续校验
-    if (entry.source !== 'pypi' && entry.source !== 'pyodide-lock') {
-      errors.push(at + ' 的 "source" 必须是 "pypi" 或 "pyodide-lock"，得到 ' + JSON.stringify(entry.source));
+    if (entry.source !== 'pypi' && entry.source !== 'pyodide-lock' && entry.source !== 'local') {
+      errors.push(at + ' 的 "source" 必须是 "pypi"、"pyodide-lock" 或 "local"，得到 '
+        + JSON.stringify(entry.source));
+    }
+    if (entry.source === 'local'
+      && (typeof entry.path !== 'string' || !entry.path.length)) {
+      errors.push(at + ' 的 "source" 为 "local" 时必须给出字符串字段 "path"（源码目录）');
     }
     if (!SHA256_RE.test(entry.sha256)) {
       errors.push(at + ' 的 "sha256" 必须是 64 位小写十六进制');
@@ -259,11 +268,56 @@ async function pypiSha256For(dist, version, filename) {
   return digest;
 }
 
+// source "local"：用 SDK 自己从源码重新构建 wheel（CPython 标准库
+// 实现，构建是确定性的），必须与提交进 vendor/wheels/ 的 wheel 逐字节
+// 相同——取代 PyPI / pyodide-lock 的外部来源核验。找不到可用的
+// CPython 3（>=3.12 语义需要）时报错退出，不跳过。
+function rebuildLocalWheel(repoRoot, entry) {
+  const pythonBin = process.env.PYTHON || 'python';
+  // entry.path 是 SDK 源码目录（顶层包本身）；build-wheel 的 src_dir 约定
+  // 是“包含顶层包的目录”，因此取其父目录（packages/locus_capability_sdk
+  // -> packages/）。
+  const srcDir = path.dirname(path.join(repoRoot, entry.path));
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'locus-local-wheel-'));
+  const probe = spawnSync(pythonBin, ['-c', 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'], {
+    encoding: 'utf8',
+  });
+  if (probe.error || probe.status !== 0) {
+    fs.rmSync(outDir, { recursive: true, force: true });
+    throw new Error('source "local" 需要 CPython >= 3.12 的 "' + pythonBin
+      + '" 在 PATH 上（或用 PYTHON 指定），重建无法进行'
+      + (probe.error ? '：' + probe.error.message : ''));
+  }
+  const summary = 'Locus capability authoring SDK: validate projects, build deterministic '
+    + 'wheels and store-only .locus packages.';
+  const r = spawnSync(pythonBin, [
+    '-m', 'locus_capability_sdk', 'build-wheel', srcDir, entry.dist, entry.version, outDir,
+    '--summary', summary,
+  ], {
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONPATH: path.join(repoRoot, 'packages') },
+  });
+  if (r.error || r.status !== 0) {
+    fs.rmSync(outDir, { recursive: true, force: true });
+    throw new Error('从源码重建 wheel 失败（' + pythonBin + ' -m locus_capability_sdk）: '
+      + ((r.stdout || '') + (r.stderr || '')).trim().slice(0, 400));
+  }
+  const rebuilt = path.join(outDir, entry.filename);
+  if (!fs.existsSync(rebuilt)) {
+    fs.rmSync(outDir, { recursive: true, force: true });
+    throw new Error('重建输出缺少 ' + entry.filename + '（构建器输出与清单 filename 不一致？）');
+  }
+  const bytes = fs.readFileSync(rebuilt);
+  fs.rmSync(outDir, { recursive: true, force: true });
+  return bytes;
+}
+
 // source 核验：
 //   - "pyodide-lock"：sha256 必须等于 vendor/pyodide-lock-0.26.4.json 里
 //     对应包的记录，且文件名一致；
 //   - "pypi"：在线查询 PyPI JSON API，sha256 必须等于该文件名的
-//     digests.sha256。
+//     digests.sha256；
+//   - "local"：从源码重建 wheel，与提交的文件逐字节相同。
 // 返回错误信息数组（空数组 = 通过）。
 export async function checkVendorSources(repoRoot) {
   const errors = [];
@@ -306,6 +360,19 @@ export async function checkVendorSources(repoRoot) {
         const actual = await pypiSha256For(entry.dist, entry.version, entry.filename);
         if (actual !== entry.sha256) {
           errors.push(at + ': sha256 与 PyPI 公布值不一致: 清单 ' + entry.sha256 + '，PyPI ' + actual);
+        }
+      } else if (entry.source === 'local') {
+        const wheelPath = vendorWheelPath(repoRoot, entry);
+        if (!fs.existsSync(wheelPath)) {
+          errors.push(at + ': 缺少提交的 wheel 文件（本地重建核验无法进行）');
+          continue;
+        }
+        const committed = fs.readFileSync(wheelPath);
+        const rebuilt = rebuildLocalWheel(repoRoot, entry);
+        if (Buffer.compare(committed, rebuilt) !== 0) {
+          errors.push(at + ': 从源码重建的 wheel 与提交的 wheel 逐字节不同'
+            + '（源码改了没有重新构建提交？重建 sha256 '
+            + crypto.createHash('sha256').update(rebuilt).digest('hex') + '）');
         }
       } else {
         errors.push(at + ': 未知 source ' + JSON.stringify(entry.source));

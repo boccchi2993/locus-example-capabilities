@@ -106,5 +106,18 @@
     "imports": ["pypdf"],
     "displayName": "pypdf",
     "description": "A pure-Python PDF library capable of splitting, merging, cropping and transforming PDF files."
+  },
+  {
+    "id": "py-locus-capability-sdk",
+    "dist": "locus-capability-sdk",
+    "version": "1.0.0",
+    "filename": "locus_capability_sdk-1.0.0-py3-none-any.whl",
+    "sha256": "a952bb5980bdced2742ca1fba0d4ccfa3e6b0e5bd68dd4fe741175ccf507775c",
+    "source": "local",
+    "path": "packages/locus_capability_sdk",
+    "license": "MIT",
+    "imports": ["locus_capability_sdk"],
+    "displayName": "locus-capability-sdk",
+    "description": "Locus capability authoring SDK: validate capability projects, build deterministic pure-Python wheels and store-only .locus packages with the standard library."
   }
 ]

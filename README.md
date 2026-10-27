@@ -10,7 +10,8 @@ Locus 的官方示例能力包（.locus）仓库（见 locus-product DECISIONS D
 
 ## 构建与检查
 
-需要 Node 24。
+需要 Node 24；`npm run check` 与 `npm run verify-vendor` 还需要
+CPython >= 3.12 在 PATH 上（SDK wheel 的本地重建核验；CI 两者都有）。
 
 ```sh
 npm ci                # 按 lockfile 安装依赖（打包代码来自锁定的 locus-product 提交）
@@ -26,6 +27,26 @@ npm run verify-vendor # 只跑 vendor 的一致性与来源核验（在线）
 能力目录约定（含不进包的 `locus.json` 元文件）见 [AGENTS.md](AGENTS.md)；
 发布（tag `<id>@<version>` 与 Release）只在所有者明确要求时进行。
 
+## SDK（locus_capability_sdk）
+
+[packages/locus_capability_sdk/](packages/locus_capability_sdk/README.md) 是纯
+Python 3.12 标准库的能力创作 SDK：校验能力项目（`validate`）、打确定性
+wheel（`build_wheel`）、构建 `.locus`（`build`）、导入式摘要（`inspect`），
+并提供 `python -m locus_capability_sdk validate|build|build-wheel|inspect`
+命令行——人和模型在普通 CPython 下都能用，不依赖 Locus 或 Node。
+
+SDK 与 JS 打包管线（`scripts/*.mjs` + 锁定的 locus-product）**逐字节一致**，
+由 CI 的交叉校验强制（`tests/sdk-crosscheck.test.mjs` XC1–XC6）；SDK 自己的
+wheel 提交在 [vendor/wheels/](vendor/README.md)（`source: "local"`），检查脚本
+会从源码重建并要求逐字节相同。`.locus` 自 2026-10-28 起为 **store-only**
+（zip 条目不压缩，product PR #45 的所有者决定）：包字节只取决于输入，
+在 Node、浏览器与 CPython 上构建结果完全相同。
+
+从 2026-10-28 起构建的包为 store 格式：与 2026-10-23 发布的
+deepseek-web@1.0.0 Release 附件（deflate 版）**字节不同、内容与 manifest
+digest 相同**（`tests/store-only.test.mjs` 持续验证），旧附件无需重新发布，
+导入不受影响（product 读取端兼容两种格式）。
+
 ## 第三方 wheel（D13）
 
 能力包可以携带第三方 Python wheel（locus-product `docs/DECISIONS.md` D13）。
@@ -33,7 +54,9 @@ wheel 不放在能力目录里，统一收在 [vendor/](vendor/README.md)：
 
 - `vendor/wheels/` — wheel 文件本体（提交进 git，同一个 wheel 只存一份）。
 - `vendor/wheels.json` — wheel 清单，每项：
-  `{ id, dist, version, filename, sha256, source, license, imports, displayName, description }`
+  `{ id, dist, version, filename, sha256, source, license, imports, displayName, description }`；
+  `source` 为 `"local"` 的项（本仓库源码构建的 wheel）额外带
+  `path`（源码目录），不参与外部来源核验，改为**从源码重建逐字节比对**。
 - `vendor/pyodide-lock-0.26.4.json` — Pyodide 0.26.4 官方 lock，`source` 为
   `"pyodide-lock"` 的 wheel 的 sha256 依据（其 sha256 与下载时间记录在
   [vendor/README.md](vendor/README.md)）。
@@ -56,6 +79,8 @@ python-wheel artifact）并把 wheel 复制进内存工作区——不写回源�
 2. 来源核验：纯 Python wheel 的 sha256 必须等于 PyPI JSON API 公布值
    （在线查询，网络不可用时报错退出）；Pyodide 原生 wheel 必须等于
    Pyodide 0.26.4 官方 pyodide-lock.json 里的记录，且文件名一致；
+   `source: "local"` 的 wheel（需要 CPython >= 3.12）从源码重建，
+   必须与提交的文件逐字节相同；
 3. 平台标签：必须是纯 Python（`*-none-any`）或 cp312 +
    `pyodide_2024_0_wasm32`；
 4. 预装遮盖：不得携带 runtime 已预装的包（micropip、numpy、packaging、
