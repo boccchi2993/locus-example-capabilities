@@ -2,8 +2,9 @@
 // scripts/wheel-checks.mjs / scripts/wheel-util.mjs）。
 //
 //   VW1  vendor 一致性：真实 vendor 通过；临时副本上篡改一个字节报错
-//   VW2  来源核验：全部 9 项在线核验通过（pypi 对 PyPI、pyodide-lock 对
-//        lock 记录）；sha 改错的夹具报错（联网测试；网络不可用时按 D13
+//   VW2  来源核验：10 项全部核验通过（pypi 对 PyPI、pyodide-lock 对
+//        lock 记录、local 的 py-locus-capability-sdk 从源码重建逐字节
+//        相同）；sha 改错的夹具报错（联网测试；网络不可用时按 D13
 //        要求报错退出，不跳过）
 //   VW3  平台标签：wheel 文件名列表（none-any / cp312+pyodide_2024_0_wasm32
 //        与各种不兼容形状；与 runtime 计划中的 RT-ABI AB3 同类例子组）
@@ -83,13 +84,16 @@ function makeTempVendor() {
   fs.rmSync(tamperedRoot, { recursive: true, force: true });
 
   const entries = loadVendorEntries(repoRoot);
-  check('VW2 清单共 9 项且含 batch-1 / batch-2 的代表项',
-    entries.length === 9
+  check('VW2 清单共 10 项且含 batch-1 / batch-2 / local 的代表项',
+    entries.length === 10
     && entries.some((e) => e.id === 'py-openpyxl' && e.version === '3.1.5' && e.source === 'pypi')
     && entries.some((e) => e.id === 'py-et-xmlfile' && e.version === '2.0.0' && e.source === 'pypi')
     && entries.some((e) => e.id === 'py-lxml' && e.version === '5.2.1' && e.source === 'pyodide-lock')
     && entries.some((e) => e.id === 'py-pillow' && e.version === '10.2.0' && e.source === 'pyodide-lock')
-    && entries.some((e) => e.id === 'py-pypdf' && e.version === '6.21.2' && e.source === 'pypi'),
+    && entries.some((e) => e.id === 'py-pypdf' && e.version === '6.21.2' && e.source === 'pypi')
+    && entries.some((e) => e.id === 'py-locus-capability-sdk'
+      && e.version === '1.0.0' && e.source === 'local' && e.path === 'packages/locus_capability_sdk'
+      && e.imports.length === 1 && e.imports[0] === 'locus_capability_sdk' && e.license === 'MIT'),
     JSON.stringify(entries.map((e) => e.id)));
 }
 
