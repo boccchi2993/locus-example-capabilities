@@ -26,6 +26,9 @@ check('undeclared $VAR is caught',
 check('curl target outside the declared pathPrefix is caught',
   JSON.stringify(rulesOf('spec-url-outside-prefix')) === JSON.stringify(['url-outside-prefix']),
   JSON.stringify(rulesOf('spec-url-outside-prefix')));
+check('two-part capability version is caught',
+  JSON.stringify(rulesOf('spec-version-format')) === JSON.stringify(['version-format']),
+  JSON.stringify(rulesOf('spec-version-format')));
 
 console.log('skill-spec.test: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

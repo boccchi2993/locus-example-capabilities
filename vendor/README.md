@@ -36,7 +36,7 @@ Pyodide 0.26.4 / CPython 3.12.1 / abi 2024_0 / emscripten_3_1_58 / wasm32，
   `source: "pyodide-lock"`）**：lxml 5.2.1、pillow 10.2.0。sha256 与文件名
   以本目录 lock 文件的记录为准（lock 里 `depends` 均为空）。
 - **本仓库源码构建的 wheel（`source: "local"`，额外带 `path` 字段）**：
-  locus-capability-sdk 1.0.0（`locus_capability_sdk-1.0.0-py3-none-any.whl`，
+  locus-capability-sdk 1.1.0（`locus_capability_sdk-1.1.0-py3-none-any.whl`，
   源码在 `packages/locus_capability_sdk/`，即能力创作 SDK 本身）。它没有
   外部来源——检查脚本用 SDK 自己从源码重建 wheel，要求与提交的文件
   **逐字节相同**（源码改了必须重新构建提交；`npm test` 的 XC6 与

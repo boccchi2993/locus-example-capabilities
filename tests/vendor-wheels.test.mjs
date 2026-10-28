@@ -92,7 +92,7 @@ function makeTempVendor() {
     && entries.some((e) => e.id === 'py-pillow' && e.version === '10.2.0' && e.source === 'pyodide-lock')
     && entries.some((e) => e.id === 'py-pypdf' && e.version === '6.21.2' && e.source === 'pypi')
     && entries.some((e) => e.id === 'py-locus-capability-sdk'
-      && e.version === '1.0.0' && e.source === 'local' && e.path === 'packages/locus_capability_sdk'
+      && e.version === '1.1.0' && e.source === 'local' && e.path === 'packages/locus_capability_sdk'
       && e.imports.length === 1 && e.imports[0] === 'locus_capability_sdk' && e.license === 'MIT'),
     JSON.stringify(entries.map((e) => e.id)));
 }

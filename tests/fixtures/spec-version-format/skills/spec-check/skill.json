@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "spec-check",
+    "version": "1",
+    "displayName": "Spec Check",
+    "description": "TEST ONLY spec-violation fixture."
+  },
+  "source": "SKILL.md"
+}

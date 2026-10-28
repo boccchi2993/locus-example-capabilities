@@ -5,7 +5,8 @@
 //       记录为空、最小 manager 替身、固定 now）检查 .locus：ok 为
 //       true、kind 为 'new'、mismatched 为空。
 //    b. 确定性：再构建一次，与 dist/ 里的产物字节相同。
-//    c. skill 规范检查（scripts/skill-spec.mjs 的三条规则）。
+//    c. skill 规范检查（scripts/skill-spec.mjs 的四条规则：字面密钥、
+//       curl 凭据变量与目标范围、capability.version 三段数字）。
 //    d. vendor 一致性：wheels.json 每项的文件存在、sha256 一致，
 //       vendor/wheels/ 没有多余或缺失文件，pyodide-lock 的 sha256
 //       与 vendor/README.md 记录一致（scripts/vendor.mjs）。

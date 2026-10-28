@@ -39,8 +39,10 @@ sdk.build_wheel(src_dir, dist, version, out_dir, summary="")
 
 sdk.build(project_dir, out_dir)
 # -> { ok, path, sha256, bytes }；校验不通过时 { ok: False, diagnostics }
-# 且不产出文件。locus.json（author/title/purpose/changelog）缺失或
-# 字段不合法时抛 SdkError——与 scripts/build.mjs 的约定相同。
+# 且不产出文件。闸门是 validate 的全部规则（项目规则、D13 wheel 规则、
+# skill 规范）——JS 的 scripts/build.mjs 把 skill 规范留给 check.mjs，
+# SDK 在打包前就拦截。locus.json（author/title/purpose/changelog）缺失
+# 或字段不合法时抛 SdkError——与 scripts/build.mjs 的约定相同。
 
 sdk.inspect(locus_path)
 # -> 与 product 导入检查同含义的摘要：

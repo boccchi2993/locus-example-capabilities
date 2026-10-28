@@ -7,6 +7,8 @@
 #    undeclared-variable  — every curl $NAME must be a declared credential
 #    url-outside-prefix   — credential curl targets must stay inside
 #                           origin + pathPrefix
+#    version-format       — capability.version must have three numeric
+#                           parts (e.g. 1.0.0); every repack bumps the patch
 # ============================================================
 
 import json
@@ -16,6 +18,7 @@ import re
 LITERAL_KEY_PATTERN = re.compile(r"sk-[A-Za-z0-9]{16,}")
 VAR_PATTERN = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 URL_PATTERN = re.compile(r"https?://[^\s'\"`<>]+")
+VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+")
 
 
 def extract_curl_commands(text):
@@ -61,9 +64,23 @@ def check_skill_specs(project_dir):
     violations = []
     with open(os.path.join(project_dir, "capability.json"), "rb") as f:
         manifest = json.loads(f.read().decode("utf-8"))
-    credentials = manifest.get("capability", {}).get("credentials")
+    capability = manifest.get("capability")
+    credentials = capability.get("credentials") if isinstance(capability, dict) else None
     if not isinstance(credentials, list):
         credentials = []
+
+    # version-format: the version is user-facing (the .locus filename and
+    # the replace-same-version import prompt) and the repack flow bumps the
+    # patch part — three numeric parts are required, e.g. 1.0.0.
+    at_manifest = "%s/capability.json" % project_dir
+    version = capability.get("version") if isinstance(capability, dict) else None
+    if isinstance(version, str) and VERSION_PATTERN.fullmatch(version) is None:
+        violations.append({
+            "code": "version-format",
+            "path": at_manifest,
+            "message": "%s 的 capability.version 必须是三段数字版本号（如 1.0.0），得到 %s"
+                       % (at_manifest, json.dumps(version, ensure_ascii=True)),
+        })
 
     for rel in _walk_skill_md_files(project_dir):
         with open(os.path.join(project_dir, rel), "rb") as f:

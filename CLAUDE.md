@@ -63,7 +63,8 @@
   也可 `npm run build -- <id> ...` 只构建部分
 - `npm run check` — 对每个构建产物做三项检查：locus-product 的 inspect（ok / kind=new /
   mismatched 空）、确定性（再构建一次字节相同）、skill 规范（无字面 sk- 密钥；curl 里的
-  `$VAR` 必须是 capability.json 声明过的凭据，且目标 URL 在该凭据 origin+pathPrefix 内）
+  `$VAR` 必须是 capability.json 声明过的凭据，且目标 URL 在该凭据 origin+pathPrefix 内；
+  capability.version 必须是三段数字版本号）
 - `npm test` — 测试套件（Node 24）
 
 本地完整验证顺序：`npm ci && npm test && npm run build && npm run check`。

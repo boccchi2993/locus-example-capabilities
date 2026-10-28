@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "capability-authoring",
+    "version": "1.0.0",
+    "displayName": "Capability Authoring",
+    "description": "Design, test and package new Locus capabilities (.locus) from a plain-language request.",
+    "plugins": ["py-locus-capability-sdk"],
+    "skills": ["capability-authoring"],
+    "mcps": []
+  }
+}
