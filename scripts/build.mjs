@@ -134,8 +134,9 @@ async function materializeVendorPlugins(sourceDir, workspace) {
     if (hasLocal) continue;
     const entry = byId.get(id);
     if (!entry) continue;
-    workspace.write(manifestRel, Buffer.from(JSON.stringify(vendorPluginManifest(entry), null, 2) + '\n'));
-    workspace.write('plugins/' + id + '/artifacts/' + entry.filename, readVendorWheel(repoRoot, entry));
+    const wheelBytes = readVendorWheel(repoRoot, entry);
+    workspace.write(manifestRel, Buffer.from(JSON.stringify(vendorPluginManifest(entry, wheelBytes), null, 2) + '\n'));
+    workspace.write('plugins/' + id + '/artifacts/' + entry.filename, wheelBytes);
   }
 }
 

@@ -1,4 +1,4 @@
-// XC1–XC6：locus_capability_sdk（packages/，纯 Python 标准库）与 JS 打包
+// XC1–XC8：locus_capability_sdk（packages/，纯 Python 标准库）与 JS 打包
 // 管线的交叉校验（docs/C4-CAPABILITY-AUTHORING.md §2.1 A2：逐字节一致）。
 //
 //   XC1  SDK build 产出的 .locus 与 scripts/build.mjs 的逐字节相同
@@ -13,6 +13,12 @@
 //        import 并调用；RECORD 每行哈希与大小和实际文件一致。
 //   XC5  SDK 只导入标准库（AST 扫描 import，对照 sys.stdlib_module_names）。
 //   XC6  SDK 自己的 wheel 从源码重建与 vendor/wheels/ 提交的逐字节相同。
+//   XC7  对 vendor/wheels/ 每个 wheel：SDK plugin_from_wheel 的
+//        plugin.json 与 JS vendorPluginManifest（从 wheel 字节推导
+//        displayName/description/pythonImports）序列化结果逐字节相同。
+//   XC8  16 MiB 上限规则（wheel-too-large）：Python validate 与 JS
+//        checkCapabilityWheelRules 对 16 MiB+1 / 恰 16 MiB 的合成 wheel
+//        触发/不触发一致。
 //
 // 运行：node tests/sdk-crosscheck.test.mjs（npm test 会依次跑全部）。
 // 需要 CPython >= 3.12 在 PATH 上（或用 PYTHON 环境变量指定）——CI 的
@@ -28,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { buildCapability, capabilitiesDir, listCapabilityIds } from '../scripts/build.mjs';
 import { checkSkillSpecs } from '../scripts/skill-spec.mjs';
 import { checkCapabilityWheelRules } from '../scripts/wheel-checks.mjs';
+import { loadVendorEntries, vendorPluginManifest } from '../scripts/vendor.mjs';
 import { createCapabilityPackages } from 'locus-browser-agent-runtime/src/capability-packages.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -370,10 +377,10 @@ function record_json(r) {
 // ---------- XC6：SDK 自己的 wheel 可复现 ----------
 {
   const vendorWheel = path.join(repoRoot, 'vendor', 'wheels',
-    'locus_capability_sdk-1.1.0-py3-none-any.whl');
+    'locus_capability_sdk-1.2.0-py3-none-any.whl');
   const out = tmpDir('locus-xc6-');
   try {
-    const r = sdk(['build-wheel', packagesDir, 'locus-capability-sdk', '1.1.0', out,
+    const r = sdk(['build-wheel', packagesDir, 'locus-capability-sdk', '1.2.0', out,
       '--summary', 'Locus capability authoring SDK: validate projects, build deterministic '
         + 'wheels and store-only .locus packages.']);
     check('XC6 重建成功且文件名一致', r.status === 0
@@ -386,6 +393,124 @@ function record_json(r) {
     }
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
+  }
+}
+
+// ---------- XC7：规范描述符 plugin_from_wheel == vendorPluginManifest ----------
+// D14 第 5 条：同一个 wheel 必须生成逐字节相同的 plugin.json——SDK 的
+// plugin_from_wheel 与 JS 的 vendorPluginManifest（从 wheel 字节推导
+// displayName / description / pythonImports）对 vendor/wheels/ 里每个
+// wheel 的序列化结果必须完全一致。
+{
+  const entries = loadVendorEntries(repoRoot);
+  check('XC7 vendor 清单非空', entries.length > 0, String(entries.length));
+  for (const entry of entries) {
+    const wheelPath = path.join(repoRoot, 'vendor', 'wheels', entry.filename);
+    const proj = tmpDir('locus-xc7-');
+    try {
+      const r = sdk(['plugin-from-wheel', proj, wheelPath]);
+      check('XC7 ' + entry.id + ' plugin-from-wheel 成功且 id 一致',
+        r.status === 0 && r.doc && r.doc.id === entry.id,
+        (r.stderr || JSON.stringify(r.doc)).slice(0, 200));
+      if (r.status !== 0) continue;
+      const sdkJson = fs.readFileSync(path.join(proj, 'plugins', entry.id, 'plugin.json'));
+      const jsJson = Buffer.from(
+        JSON.stringify(vendorPluginManifest(entry, fs.readFileSync(wheelPath)), null, 2) + '\n');
+      check('XC7 ' + entry.id + ' plugin.json 逐字节相同',
+        Buffer.compare(sdkJson, jsJson) === 0,
+        'sdk ' + sdkJson.length + 'B vs js ' + jsJson.length + 'B');
+      const artifact = fs.readFileSync(path.join(proj, 'plugins', entry.id, 'artifacts', entry.filename));
+      check('XC7 ' + entry.id + ' artifacts wheel 字节与 vendor 一致',
+        Buffer.compare(artifact, fs.readFileSync(wheelPath)) === 0);
+    } finally {
+      fs.rmSync(proj, { recursive: true, force: true });
+    }
+  }
+}
+
+// ---------- XC8：16 MiB wheel 上限规则（wheel-too-large）两边一致 ----------
+// D14：插件 wheel 超过 16 MiB（runtime Python 镜像单文件上限）在 Locus
+// 内不可见，无法打包。Python validate 与 JS checkCapabilityWheelRules
+// 对 16 MiB+1 的合成 wheel 都报、恰 16 MiB 都不报。
+{
+  const SIZED_WHEEL_PY = `
+import os, sys, zipfile
+target, out = int(sys.argv[1]), sys.argv[2]
+META = ("Metadata-Version: 2.1\\nName: padlarge\\nVersion: 0.0.1\\n"
+        "Summary: Synthetic wheel for the 16 MiB size-limit test.\\n")
+WHEEL = "Wheel-Version: 1.0\\nGenerator: test\\nRoot-Is-Purelib: true\\nTag: py3-none-any\\n"
+def build(pad_size):
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("padlarge-0.0.1.dist-info/METADATA", META)
+        zf.writestr("padlarge-0.0.1.dist-info/WHEEL", WHEEL)
+        zf.writestr("padlarge-0.0.1.dist-info/RECORD",
+                    "padmod.py,sha256=gAIfB4OHaOJKtfRLUlnHh8SBetqzMstTCPMJEOW9uMM,7\\n"
+                    "padlarge-0.0.1.dist-info/RECORD,,\\n")
+        zf.writestr("padmod.py", "x = 123\\n")
+        zf.writestr("pad.bin", b"\\x00" * pad_size)
+pad = target
+build(pad)
+for _ in range(4):
+    delta = os.path.getsize(out) - target
+    if delta == 0:
+        break
+    pad -= delta
+    build(pad)
+assert os.path.getsize(out) == target, os.path.getsize(out)
+print("ok")
+`;
+  const buildSizedWheel = (targetBytes, outPath) => {
+    const r = spawnSync(pythonBin, ['-c', SIZED_WHEEL_PY, String(targetBytes), outPath], {
+      encoding: 'utf8',
+    });
+    if (r.status !== 0) throw new Error('合成 wheel 构建失败: ' + (r.stderr || r.stdout));
+  };
+  const writeProject = (projectDir, wheelPath) => {
+    fs.mkdirSync(path.join(projectDir, 'skills', 'pad-demo'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'capability.json'), JSON.stringify({
+      schemaVersion: 1,
+      capability: {
+        id: 'pad-demo', version: '0.1.0', displayName: 'Pad Demo',
+        description: 'TEST ONLY crosscheck fixture for the 16 MiB wheel limit.',
+        plugins: ['py-padlarge'], skills: ['pad-demo'], mcps: [],
+      },
+    }, null, 2) + '\n');
+    fs.writeFileSync(path.join(projectDir, 'skills', 'pad-demo', 'skill.json'), JSON.stringify({
+      schemaVersion: 1,
+      skill: { id: 'pad-demo', version: '1', displayName: 'Pad demo',
+        description: 'TEST ONLY crosscheck fixture skill.' },
+      source: 'SKILL.md',
+    }, null, 2) + '\n');
+    fs.writeFileSync(path.join(projectDir, 'skills', 'pad-demo', 'SKILL.md'),
+      '# Pad demo\n\nTEST ONLY. 无网络请求。\n');
+    const r = sdk(['plugin-from-wheel', projectDir, wheelPath]);
+    if (r.status !== 0) throw new Error('plugin-from-wheel 失败: ' + r.stderr);
+  };
+
+  const work = tmpDir('locus-xc8-');
+  try {
+    for (const [label, size] of [['16 MiB+1', 16 * 1024 * 1024 + 1], ['恰 16 MiB', 16 * 1024 * 1024]]) {
+      const wheelPath = path.join(work, 'padlarge-' + size + '-py3-none-any.whl');
+      buildSizedWheel(size, wheelPath);
+      const proj = path.join(work, 'proj-' + size);
+      writeProject(proj, wheelPath);
+      const r = sdk(['validate', proj]);
+      const pyCodes = (r.doc && Array.isArray(r.doc.diagnostics))
+        ? r.doc.diagnostics.map((d) => d.code) : [];
+      const pyTooLarge = pyCodes.includes('wheel-too-large');
+      const jsErrors = checkCapabilityWheelRules(repoRoot, proj);
+      const jsTooLarge = jsErrors.some((e) => e.includes('超过 16 MiB'));
+      check('XC8 ' + label + ' Python/JS 触发一致', pyTooLarge === jsTooLarge,
+        'py=' + JSON.stringify(pyCodes) + ' js=' + JSON.stringify(jsErrors));
+      check('XC8 ' + label + ' Python 侧结论正确',
+        label === '16 MiB+1' ? (r.status === 1 && pyTooLarge
+          && r.doc.diagnostics.some((d) => d.message.includes('无法在 Locus 内打包')))
+          : (r.status === 0 && pyCodes.length === 0),
+        JSON.stringify(r.doc).slice(0, 300));
+      fs.rmSync(proj, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
   }
 }
 

@@ -1,0 +1,11 @@
+{
+  "info": {
+    "version": "0.26.4"
+  },
+  "packages": {
+    "lxml": {
+      "file_name": "lxml-5.2.1-cp312-cp312-pyodide_2024_0_wasm32.whl",
+      "sha256": "162c1a8c58fa7da34c2c492b7a572f8d604318d9708f6cd8c3968bfa5fe8a08b"
+    }
+  }
+}

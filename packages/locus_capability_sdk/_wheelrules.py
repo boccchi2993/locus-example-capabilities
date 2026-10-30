@@ -14,7 +14,7 @@
 #    wheel-id-invalid, wheel-shadow-preinstalled, wheel-unresolvable,
 #    wheel-platform-incompatible, wheel-metadata-unreadable,
 #    wheel-requires-unparseable, wheel-marker-undecidable,
-#    wheel-dependency-missing, wheel-dependency-order
+#    wheel-dependency-missing, wheel-dependency-order, wheel-too-large
 # ============================================================
 
 import json
@@ -107,8 +107,8 @@ def _find_eocd(buf):
     return -1
 
 
-def read_wheel_metadata(data: bytes) -> str:
-    """Return the UTF-8 text of the wheel's *.dist-info/METADATA."""
+def _read_zip_member(data: bytes, name_re) -> str:
+    """UTF-8 text of the first central-directory entry whose name matches name_re."""
     buf = bytes(data)
     eocd = _find_eocd(buf)
     if eocd < 0:
@@ -127,7 +127,7 @@ def read_wheel_metadata(data: bytes) -> str:
         comment_len = struct.unpack_from("<H", buf, off + 32)[0]
         local_offset = struct.unpack_from("<I", buf, off + 42)[0]
         name = buf[off + 46:off + 46 + name_len].decode("utf-8")
-        if re.fullmatch(r"[^/]+\.dist-info/METADATA", name):
+        if re.fullmatch(name_re, name):
             if local_offset + 30 > len(buf) \
                     or struct.unpack_from("<I", buf, local_offset)[0] != _LFH_SIG:
                 raise ValueError("不是合法的 wheel（zip）：local header 损坏")
@@ -145,12 +145,22 @@ def read_wheel_metadata(data: bytes) -> str:
                 except zlib.error as e:
                     raise ValueError("不是合法的 wheel（zip）：deflate 数据损坏（%s）" % e)
             else:
-                raise ValueError("wheel METADATA 使用了不支持的压缩方法 %d" % method)
+                raise ValueError("wheel %s 使用了不支持的压缩方法 %d" % (name, method))
             return out.decode("utf-8")
         off += 46 + name_len + extra_len + comment_len
     if off > cd_offset + cd_size:
         raise ValueError("不是合法的 wheel（zip）：central directory 越界")
-    raise ValueError("wheel 中找不到 .dist-info/METADATA")
+    raise ValueError("wheel 中找不到匹配 %s 的条目" % name_re)
+
+
+def read_wheel_metadata(data: bytes) -> str:
+    """Return the UTF-8 text of the wheel's *.dist-info/METADATA."""
+    return _read_zip_member(data, r"[^/]+\.dist-info/METADATA")
+
+
+def read_wheel_record(data: bytes) -> str:
+    """Return the UTF-8 text of the wheel's *.dist-info/RECORD."""
+    return _read_zip_member(data, r"[^/]+\.dist-info/RECORD")
 
 
 def wheel_requires_dist(metadata_text):
@@ -162,6 +172,57 @@ def wheel_requires_dist(metadata_text):
         if m:
             out.append(m.group(1).strip())
     return out
+
+
+def wheel_metadata_fields(metadata_text):
+    """{name, version, summary} from the METADATA header block.
+
+    First occurrence of each header wins; absent headers are None.
+    Header values are stripped (Summary 去首尾空白 happens here).
+    RFC 822 continuation (folded) lines are NOT handled — the minimal
+    reader treats every header as one line, same as wheel_requires_dist.
+    """
+    fields = {"name": None, "version": None, "summary": None}
+    for line in re.split(r"\r?\n", str(metadata_text)):
+        if line == "":
+            break
+        m = re.fullmatch(r"(Name|Version|Summary):\s*(.*)", line, re.IGNORECASE)
+        if m:
+            key = m.group(1).lower()
+            if fields[key] is None:
+                fields[key] = m.group(2).strip()
+    return fields
+
+
+def wheel_top_level_imports(record_text):
+    """Importable top-level names derived from a RECORD text.
+
+    A name is a top-level package directory (any multi-segment arc whose
+    first segment is kept) or a top-level .py module (single-segment arc
+    ending in .py). *.dist-info, *.data and __pycache__ first segments
+    are excluded. Sorted and deduplicated.
+    """
+    names = set()
+    for line in re.split(r"\r?\n", str(record_text)):
+        arc = line.split(",")[0] if line else ""
+        if not arc:
+            continue
+        parts = arc.split("/")
+        first = parts[0]
+        if first.endswith(".dist-info") or first.endswith(".data") or first == "__pycache__":
+            continue
+        if len(parts) == 1:
+            if first.endswith(".py"):
+                names.add(first[:-len(".py")])
+        else:
+            names.add(first)
+    return sorted(names)
+
+
+# D14 第 5 条前置条件 + runtime Python 镜像单文件上限（runtime PR #12 把
+# SYNC_MAX_FILE_BYTES 提到 16 MiB）：超过的文件在 Locus 内 Python 看不见，
+# 因此能力包里的插件 wheel 不能超过这个大小（validate 的 wheel-too-large）。
+WHEEL_SIZE_LIMIT_BYTES = 16 * 1024 * 1024
 
 
 # ---------- PEP 508 environment markers (Pyodide worker, strict) ----------
@@ -538,6 +599,12 @@ def check_capability_wheel_rules(repo_root, project_dir):
                 "code": "wheel-platform-incompatible", "path": pid,
                 "message": "%s: wheel %s 的平台标签不兼容（需要 *-none-any 或 cp312 + "
                            "pyodide_2024_0_wasm32）" % (pid, filename)})
+        if data is not None and len(data) > WHEEL_SIZE_LIMIT_BYTES:
+            errors.append({
+                "code": "wheel-too-large", "path": pid,
+                "message": "%s: wheel %s 大小 %d 字节，超过 16 MiB（%d 字节）上限 — "
+                           "Locus 中 Python 镜像单文件上限 16 MiB，超过的文件在 Locus 内不可见，"
+                           "无法在 Locus 内打包" % (pid, filename, len(data), WHEEL_SIZE_LIMIT_BYTES)})
         resolved.append({"id": pid, "index": index, "filename": filename, "bytes": data})
 
     for r in resolved:

@@ -1,0 +1,14 @@
+{
+  "info": {
+    "name": "typing_extensions",
+    "version": "4.16.0"
+  },
+  "urls": [
+    {
+      "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+      "digests": {
+        "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
+      }
+    }
+  ]
+}

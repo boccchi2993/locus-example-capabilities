@@ -1,0 +1,14 @@
+{
+  "info": {
+    "name": "python-docx",
+    "version": "1.2.0"
+  },
+  "urls": [
+    {
+      "filename": "python_docx-1.2.0-py3-none-any.whl",
+      "digests": {
+        "sha256": "3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7"
+      }
+    }
+  ]
+}

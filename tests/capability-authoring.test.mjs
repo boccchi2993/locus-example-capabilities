@@ -1,5 +1,5 @@
 // capability-authoring 能力测试（CA1–CA4，C4-CAP）：
-//   CA1  构建 dist/capability-authoring-1.0.0.locus：两次构建字节相同、
+//   CA1  构建 dist/capability-authoring-1.1.0.locus：两次构建字节相同、
 //        product inspect 通过（ok / kind 'new' / mismatched 空、恰好 1 个
 //        plugin "py-locus-capability-sdk" + 1 个 skill "capability-authoring"）、
 //        skill 规范检查通过。
@@ -39,7 +39,7 @@ import { checkSkillSpecs } from '../scripts/skill-spec.mjs';
 const CAPABILITY_ID = 'capability-authoring';
 const capabilityDir = path.join(capabilitiesDir, CAPABILITY_ID);
 const skillMdPath = path.join(capabilityDir, 'skills', CAPABILITY_ID, 'SKILL.md');
-const distPath = path.join(distDir, CAPABILITY_ID + '-1.0.0.locus');
+const distPath = path.join(distDir, CAPABILITY_ID + '-1.1.0.locus');
 const repoRoot = path.dirname(capabilitiesDir);
 const pythonBin = process.env.PYTHON || 'python';
 
@@ -106,14 +106,14 @@ function extractExampleFiles(text) {
 // ---------- CA1：构建 + inspect + skill 规范 ----------
 const first = await buildCapability(capabilityDir);
 const second = await buildCapability(capabilityDir);
-check('CA1: build id/version are capability-authoring@1.0.0',
-  first.id === CAPABILITY_ID && first.version === '1.0.0',
+check('CA1: build id/version are capability-authoring@1.1.0',
+  first.id === CAPABILITY_ID && first.version === '1.1.0',
   first.id + '@' + first.version);
 check('CA1: two in-process builds are byte-identical', bytesEqual(first.bytes, second.bytes));
 const b1 = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'build.mjs'), CAPABILITY_ID],
   { cwd: repoRoot, encoding: 'utf8' });
 check('CA1: build script exits 0', b1.status === 0, (b1.stderr || '').slice(0, 400));
-check('CA1: dist/capability-authoring-1.0.0.locus exists', fs.existsSync(distPath));
+check('CA1: dist/capability-authoring-1.1.0.locus exists', fs.existsSync(distPath));
 const dist1 = fs.readFileSync(distPath);
 check('CA1: script artifact matches in-process build', bytesEqual(dist1, first.bytes));
 const b2 = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'build.mjs'), CAPABILITY_ID],

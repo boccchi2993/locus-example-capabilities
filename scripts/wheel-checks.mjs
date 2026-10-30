@@ -23,6 +23,7 @@ import {
   pluginIdForDist,
   PLUGIN_ID_RE,
   wheelPlatformCompatible,
+  WHEEL_SIZE_LIMIT_BYTES,
   RUNTIME_PREINSTALLED_PACKAGES,
   readWheelMetadata,
   wheelRequiresDist,
@@ -123,6 +124,13 @@ export function checkCapabilityWheelRules(repoRoot, sourceDir) {
     }
     if (filename && !wheelPlatformCompatible(filename)) {
       errors.push(id + ': wheel ' + filename + ' 的平台标签不兼容（需要 *-none-any 或 cp312 + pyodide_2024_0_wasm32）');
+    }
+    // D14：16 MiB 上限（runtime Python 镜像单文件上限）。超过的文件在
+    // Locus 内 Python 看不见，无法在 Locus 内打包。
+    if (bytes && bytes.length > WHEEL_SIZE_LIMIT_BYTES) {
+      errors.push(id + ': wheel ' + filename + ' 大小 ' + bytes.length
+        + ' 字节，超过 16 MiB（' + WHEEL_SIZE_LIMIT_BYTES
+        + ' 字节）上限 — Locus 中 Python 镜像单文件上限 16 MiB，超过的文件在 Locus 内不可见，无法在 Locus 内打包');
     }
     resolved.push({ id, index, filename, bytes });
   });

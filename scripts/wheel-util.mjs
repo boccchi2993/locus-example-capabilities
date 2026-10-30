@@ -106,16 +106,17 @@ function findEocd(buf) {
   return -1;
 }
 
-// 读 wheel（一个 zip）里的 *.dist-info/METADATA，返回 UTF-8 文本。
+// 读 wheel（一个 zip）里指定 dist-info 基名的条目，返回 UTF-8 文本。
 // 只实现 wheel 实际用到的那部分 zip：EOCD + central directory +
-// local header，stored / deflate 两种压缩。找不到 METADATA 时抛错。
-export function readWheelMetadata(bytes) {
+// local header，stored / deflate 两种压缩。找不到时抛错。
+function readWheelMember(bytes, baseName) {
   const buf = Buffer.from(bytes);
   const eocd = findEocd(buf);
   if (eocd < 0) throw new Error('不是合法的 wheel（zip）：找不到 EOCD');
   const cdOffset = U32(buf, eocd + 16);
   const cdSize = U32(buf, eocd + 12);
   const totalEntries = U16(buf, eocd + 10);
+  const nameRe = new RegExp('^[^/]+\\.dist-info\\/' + baseName + '$');
   let off = cdOffset;
   for (let i = 0; i < totalEntries; i++) {
     if (off + 46 > buf.length || U32(buf, off) !== CDH_SIG) {
@@ -128,7 +129,7 @@ export function readWheelMetadata(bytes) {
     const commentLen = U16(buf, off + 32);
     const localOffset = U32(buf, off + 42);
     const name = buf.toString('utf8', off + 46, off + 46 + nameLen);
-    if (/^[^/]+\.dist-info\/METADATA$/.test(name)) {
+    if (nameRe.test(name)) {
       if (localOffset + 30 > buf.length || U32(buf, localOffset) !== LFH_SIG) {
         throw new Error('不是合法的 wheel（zip）：local header 损坏');
       }
@@ -141,13 +142,18 @@ export function readWheelMetadata(bytes) {
       const raw = buf.subarray(dataStart, dataStart + compressedSize);
       const out = method === 0 ? raw
         : method === 8 ? zlib.inflateRawSync(raw)
-        : (() => { throw new Error('wheel METADATA 使用了不支持的压缩方法 ' + method); })();
+        : (() => { throw new Error('wheel ' + name + ' 使用了不支持的压缩方法 ' + method); })();
       return out.toString('utf8');
     }
     off += 46 + nameLen + extraLen + commentLen;
   }
   if (off > cdOffset + cdSize) throw new Error('不是合法的 wheel（zip）：central directory 越界');
-  throw new Error('wheel 中找不到 .dist-info/METADATA');
+  throw new Error('wheel 中找不到匹配 ' + baseName + ' 的条目');
+}
+
+// 读 wheel（一个 zip）里的 *.dist-info/METADATA，返回 UTF-8 文本。
+export function readWheelMetadata(bytes) {
+  return readWheelMember(bytes, 'METADATA');
 }
 
 // METADATA 是 RFC 822 风格：头在第一个空行之前，Requires-Dist 每条一行。
@@ -160,6 +166,54 @@ export function wheelRequiresDist(metadataText) {
   }
   return out;
 }
+
+// METADATA 头块里的 Name / Version / Summary（首个出现者赢，缺省 null）。
+// 值都去首尾空白（Summary 去首尾空白在这里完成）。不处理 RFC 822 折叠
+// 行——与 wheelRequiresDist 的最小读取器哲学一致。
+// 与 locus_capability_sdk._wheelrules.wheel_metadata_fields 同语义。
+export function wheelMetadataFields(metadataText) {
+  const fields = { name: null, version: null, summary: null };
+  for (const line of String(metadataText).split(/\r?\n/)) {
+    if (line === '') break;
+    const m = /^(Name|Version|Summary):\s*(.*)$/i.exec(line);
+    if (m) {
+      const key = m[1].toLowerCase();
+      if (fields[key] === null) fields[key] = m[2].trim();
+    }
+  }
+  return fields;
+}
+
+// wheel 的 *.dist-info/RECORD，返回 UTF-8 文本。
+export function readWheelRecord(bytes) {
+  return readWheelMember(bytes, 'RECORD');
+}
+
+// 从 RECORD 文本推导可导入的顶层名：顶层包目录（多段路径的首段）与
+// 顶层 .py 模块（单段 *.py）；排除 *.dist-info、*.data、__pycache__。
+// 排序去重。与 locus_capability_sdk._wheelrules.wheel_top_level_imports
+// 同语义。
+export function wheelTopLevelImports(recordText) {
+  const names = new Set();
+  for (const line of String(recordText).split(/\r?\n/)) {
+    const arc = line ? line.split(',')[0] : '';
+    if (!arc) continue;
+    const parts = arc.split('/');
+    const first = parts[0];
+    if (first.endsWith('.dist-info') || first.endsWith('.data') || first === '__pycache__') continue;
+    if (parts.length === 1) {
+      if (first.endsWith('.py')) names.add(first.slice(0, -'.py'.length));
+    } else {
+      names.add(first);
+    }
+  }
+  return [...names].sort();
+}
+
+// D14：插件 wheel 的 16 MiB 上限（runtime Python 镜像单文件上限，
+// SYNC_MAX_FILE_BYTES，runtime PR #12）。超过的文件在 Locus 内 Python
+// 看不见，无法在 Locus 内打包。
+export const WHEEL_SIZE_LIMIT_BYTES = 16 * 1024 * 1024;
 
 // ---------- 4b. PEP 508 环境标记 ----------
 

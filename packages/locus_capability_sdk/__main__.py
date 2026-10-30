@@ -8,6 +8,9 @@
 #    python -m locus_capability_sdk build <project_dir> <out_dir>
 #    python -m locus_capability_sdk build-wheel <src_dir> <dist> <version> <out_dir> [--summary S]
 #    python -m locus_capability_sdk inspect <path/to.pkg.locus>
+#    python -m locus_capability_sdk wheel-info <whl>
+#    python -m locus_capability_sdk verify-wheel <whl> <metadata.json>
+#    python -m locus_capability_sdk plugin-from-wheel <project_dir> <whl>
 #
 #  Every subcommand prints one JSON document on stdout. Exit code 0 =
 #  operation succeeded (validate: no diagnostics; build: file written;
@@ -18,7 +21,16 @@
 import json
 import sys
 
-from . import SdkError, build, build_wheel, inspect, validate  # noqa: E402
+from . import (  # noqa: E402
+    SdkError,
+    build,
+    build_wheel,
+    inspect,
+    plugin_from_wheel,
+    validate,
+    verify_wheel,
+    wheel_info,
+)
 from ._version import __version__  # noqa: E402
 
 
@@ -85,6 +97,31 @@ def main(argv):
             result = inspect(args[0])
             _print(result)
             return 0 if result["ok"] else 1
+
+        if cmd == "wheel-info":
+            if len(args) != 1:
+                sys.stderr.write("usage: locus_capability_sdk wheel-info <whl>\n")
+                return 2
+            _print(wheel_info(args[0]))
+            return 0
+
+        if cmd == "verify-wheel":
+            if len(args) != 2:
+                sys.stderr.write(
+                    "usage: locus_capability_sdk verify-wheel <whl> <metadata.json>\n")
+                return 2
+            result = verify_wheel(args[0], args[1])
+            _print(result)
+            return 0 if result["ok"] else 1
+
+        if cmd == "plugin-from-wheel":
+            if len(args) != 2:
+                sys.stderr.write(
+                    "usage: locus_capability_sdk plugin-from-wheel <project_dir> <whl>\n")
+                return 2
+            result = plugin_from_wheel(args[0], args[1])
+            _print(result)
+            return 0
 
         if cmd in ("-V", "--version"):
             _print({"version": __version__})
