@@ -14,6 +14,10 @@
 //   SW5  wheel-too-large：16 MiB+1 的合成 wheel 触发（validate 诊断 +
 //        build 拒绝且不出文件），恰 16 MiB 不触发
 //   SW6  CLI 子命令的用法错误退出码（2 = usage / fatal，与现有约定一致）
+//   SW7  test_site 挂载点检查先规范化：/opt/../tmp/x、
+//        /opt/./../home/locus/x、//tmp/x 三种绕过写法被拒
+//   SW8  test_site 的 site 规范化等价：/opt/locus-site/ 与
+//        /opt/locus-site 同一 site（第二次调用跳过、sys.path 只出现一次）
 //
 // 运行：node tests/sdk-thirdparty.test.mjs（npm test 会依次跑全部）。
 // 需要 CPython >= 3.12 在 PATH 上（或 PYTHON 环境变量指定）。
@@ -271,7 +275,8 @@ print(json.dumps({
     "installed1": r1["installed"], "skipped1": r1["skipped"],
     "installed2": r2["installed"], "skipped2": r2["skipped"],
     "ok_import": ok_import, "markers": sorted(markers),
-    "site_at_front": sys.path[0] == sys.argv[3],
+    # test_site 插入的是规范化后的 site，与返回值一致（SW8）。
+    "site_at_front": sys.path[0] == r1["site"],
 }))
 `;
   const r = spawnSync(pythonBin, ['-c', py, WHEELS.typing, WHEELS.etXmlfile, site], {
@@ -293,6 +298,57 @@ print(json.dumps({
     && JSON.stringify(doc.skipped2) === JSON.stringify(['typing_extensions-4.16.0-py3-none-any.whl', 'et_xmlfile-2.0.0-py3-none-any.whl']),
     JSON.stringify(doc));
   rmRf(site);
+
+  // ---------- SW7 挂载点检查先规范化，绕过写法无效 ----------
+  for (const site of ['/opt/../tmp/x', '/opt/./../home/locus/x', '//tmp/x']) {
+    const r = spawnSync(pythonBin, ['-c', `
+import sys
+from locus_capability_sdk import SdkError, test_site
+try:
+    test_site(sys.argv[1:], site=sys.argv[-1])
+except SdkError as e:
+    print("SdkError")
+    sys.exit(0)
+sys.exit(3)
+`, WHEELS.typing, site], { encoding: 'utf8', env: { ...process.env, PYTHONPATH: packagesDir } });
+    check('SW7 绕过写法被拒 ' + site, r.status === 0 && r.stdout.trim() === 'SdkError',
+      r.status + ' ' + r.stdout + r.stderr);
+  }
+
+  // ---------- SW8 尾斜杠与裸 site 等价（规范化后的值统一） ----------
+  {
+    const siteBase = tmpDir('locus-sw8-site-');
+    const py = `
+import json, sys
+from locus_capability_sdk import test_site
+base = sys.argv[1]
+r1 = test_site(sys.argv[2:4], site=base + "/", allow_unsafe_site_for_tests=True)
+import typing_extensions
+import et_xmlfile
+r2 = test_site(sys.argv[2:4], site=base, allow_unsafe_site_for_tests=True)
+print(json.dumps({
+    "site1": r1["site"], "site2": r2["site"], "same": r1["site"] == r2["site"],
+    "no_trailing_slash": not r1["site"].endswith("/"),
+    "installed1": r1["installed"], "skipped2": r2["skipped"],
+    "path_hits": sum(1 for p in sys.path if p == r1["site"]),
+}))
+`;
+    const r = spawnSync(pythonBin, ['-c', py, siteBase, WHEELS.typing, WHEELS.etXmlfile], {
+      encoding: 'utf8',
+      env: { ...process.env, PYTHONPATH: packagesDir },
+    });
+    let doc = null;
+    try { doc = JSON.parse(r.stdout.trim()); } catch (e) { doc = null; }
+    check('SW8 尾斜杠与裸 site 规范化为同一值', r.status === 0 && doc !== null
+      && doc.same === true && doc.no_trailing_slash === true,
+      r.status + ' ' + r.stdout.slice(0, 200) + ' ' + r.stderr.slice(0, 300));
+    check('SW8 第二次调用全部跳过（同一 site）', doc !== null
+      && JSON.stringify(doc.installed1) === JSON.stringify(['typing_extensions-4.16.0-py3-none-any.whl', 'et_xmlfile-2.0.0-py3-none-any.whl'])
+      && JSON.stringify(doc.skipped2) === JSON.stringify(['typing_extensions-4.16.0-py3-none-any.whl', 'et_xmlfile-2.0.0-py3-none-any.whl']),
+      JSON.stringify(doc));
+    check('SW8 sys.path 中只出现一次', doc !== null && doc.path_hits === 1, JSON.stringify(doc));
+    rmRf(siteBase);
+  }
 }
 
 // ---------- SW5 wheel-too-large ----------

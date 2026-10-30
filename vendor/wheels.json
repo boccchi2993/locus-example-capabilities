@@ -112,7 +112,7 @@
     "dist": "locus-capability-sdk",
     "version": "1.2.0",
     "filename": "locus_capability_sdk-1.2.0-py3-none-any.whl",
-    "sha256": "c9b954d551aa01930df86e951351250c76a34676a31bfd284ceae0fbb57eeb75",
+    "sha256": "9436ee15760bcf7b0dc1fc7722f34a82c7b2bf934b6903df728c8d1c41fcb6ae",
     "source": "local",
     "path": "packages/locus_capability_sdk",
     "license": "MIT",

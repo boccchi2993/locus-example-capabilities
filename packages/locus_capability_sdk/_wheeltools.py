@@ -23,6 +23,8 @@
 import io
 import json
 import os
+import posixpath
+import re
 import sys
 import zipfile
 
@@ -295,13 +297,22 @@ def plugin_from_wheel(project_dir, wheel_path):
 # ---------- test_site ----------
 
 
+def _normalize_site(site):
+    """规范 site 路径：反斜杠转 /、折叠开头多个斜杠（//tmp/x → /tmp/x）、
+    posixpath.normpath（/opt/../tmp/x → /tmp/x、/opt/./../home/locus/x →
+    /home/locus/x）。规范化必须先于挂载点前缀比较，否则这些写法能绕过
+    检查；返回值与插入 sys.path 的值都用规范化后的形式。"""
+    return posixpath.normpath(re.sub(r"^/+", "/", str(site).replace("\\", "/")))
+
+
 def _check_site_mount(site):
-    normalized = str(site).replace("\\", "/")
-    if not normalized.startswith("/"):
+    """site 必须已用 _normalize_site 规范化：绝对 POSIX 路径且不在任何
+    数据挂载点下。"""
+    if not site.startswith("/"):
         _sdk_error(
             "test_site: site 必须是绝对 POSIX 路径，得到 %s" % json.dumps(site))
     for root in DATA_MOUNT_ROOTS:
-        if normalized == root or normalized.startswith(root + "/"):
+        if site == root or site.startswith(root + "/"):
             _sdk_error(
                 "test_site: site %s 在数据挂载点 %s 下——解压进数据挂载点会把文件"
                 "镜像进 Python 视图（同步报告与镜像上限干扰测试）。请用不属于任何"
@@ -320,7 +331,11 @@ def test_site(wheel_paths, site="/opt/locus-site", allow_unsafe_site_for_tests=F
 
     约束（docstring 即契约）：
       - site 必须不在任何数据挂载点下：/tmp、/home/locus、/mnt/... 都
-        不行，传入这些路径直接报错（SdkError）。默认 /opt/locus-site。
+        不行，传入这些路径直接报错（SdkError）。检查前先规范化
+        （折叠开头斜杠 + posixpath.normpath），/opt/../tmp/x、
+        //tmp/x 这类写法与 /tmp/x 同形，同样被拒。返回的 site 与插入
+        sys.path 的值都是规范化后的形式，/opt/locus-site/ 与
+        /opt/locus-site 是同一个 site。默认 /opt/locus-site。
       - worker 重启后解压出的文件消失，需要重新调用本函数。
       - 只用于打包前的测试，不影响打包结果：能力包的 wheel 仍由
         plugins/ 与 vendor 提供。
@@ -329,6 +344,7 @@ def test_site(wheel_paths, site="/opt/locus-site", allow_unsafe_site_for_tests=F
     测试用（在普通 CPython 上用系统临时目录验证行为），能力创作时禁止
     使用。
     """
+    site = _normalize_site(site)
     if not allow_unsafe_site_for_tests:
         _check_site_mount(site)
     if isinstance(wheel_paths, str):

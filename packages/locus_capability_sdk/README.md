@@ -84,10 +84,13 @@ sdk.plugin_from_wheel(project_dir, wheel_path)
 
 sdk.test_site(wheel_paths, site="/opt/locus-site")
 # -> { site, installed, skipped }。把各 wheel 解压进 site 并插到
-#    sys.path 最前，用于打包前的可导入性测试。site 必须不在任何数据
-#    挂载点下（/tmp、/home/locus、/mnt/... 直接报错）；worker 重启后
-#    需重新调用；已解压过相同 sha256 的跳过（.locus-installed/<sha256>
-#    标记）。只影响测试，不影响打包结果。
+#    sys.path 最前，用于打包前的可导入性测试。site 先规范化（折叠
+#    开头斜杠 + posixpath.normpath）再检查：必须不在任何数据挂载点下
+#    （/tmp、/home/locus、/mnt/... 连同 /opt/../tmp/x、//tmp/x 这类
+#    规范化后同形的写法直接报错）；返回的 site 与插入 sys.path 的值
+#    都是规范化后的形式，/opt/locus-site/ 与 /opt/locus-site 是同一个
+#    site；worker 重启后需重新调用；已解压过相同 sha256 的跳过
+#    （.locus-installed/<sha256> 标记）。只影响测试，不影响打包结果。
 ```
 
 validate 还会强制 **`wheel-too-large`**（D14）：插件 wheel 超过 16 MiB
