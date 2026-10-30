@@ -33,11 +33,16 @@ npm run verify-vendor # 只跑 vendor 的一致性与来源核验（在线）
 [packages/locus_capability_sdk/](packages/locus_capability_sdk/README.md) 是纯
 Python 3.12 标准库的能力创作 SDK：校验能力项目（`validate`）、打确定性
 wheel（`build_wheel`）、构建 `.locus`（`build`）、导入式摘要（`inspect`），
-并提供 `python -m locus_capability_sdk validate|build|build-wheel|inspect`
-命令行——人和模型在普通 CPython 下都能用，不依赖 Locus 或 Node。
+以及 D14 第三方 wheel 工具（完全离线）：`wheel_info`（wheel 要点）、
+`verify_wheel`（与 PyPI JSON / pyodide-lock 元数据离线比对 sha256）、
+`plugin_from_wheel`（从 wheel 生成规范描述符 plugins/py-<名>/plugin.json，
+同一 wheel 逐字节相同）、`test_site`（解压到非挂载点目录做打包前的
+import 测试）。命令行提供
+`python -m locus_capability_sdk validate|build|build-wheel|inspect|wheel-info|verify-wheel|plugin-from-wheel`
+——人和模型在普通 CPython 下都能用，不依赖 Locus 或 Node。
 
 SDK 与 JS 打包管线（`scripts/*.mjs` + 锁定的 locus-product）**逐字节一致**，
-由 CI 的交叉校验强制（`tests/sdk-crosscheck.test.mjs` XC1–XC6）；SDK 自己的
+由 CI 的交叉校验强制（`tests/sdk-crosscheck.test.mjs` XC1–XC8）；SDK 自己的
 wheel 提交在 [vendor/wheels/](vendor/README.md)（`source: "local"`），检查脚本
 会从源码重建并要求逐字节相同。`.locus` 自 2026-10-28 起为 **store-only**
 （zip 条目不压缩，product PR #45 的所有者决定）：包字节只取决于输入，
@@ -56,6 +61,12 @@ wheel 不放在能力目录里，统一收在 [vendor/](vendor/README.md)：
 - `vendor/wheels/` — wheel 文件本体（提交进 git，同一个 wheel 只存一份）。
 - `vendor/wheels.json` — wheel 清单，每项：
   `{ id, dist, version, filename, sha256, source, license, imports, displayName, description }`；
+  其中 `id`、`version`、`imports`、`displayName`、`description` 必须等于从
+  wheel 字节推导的结果（id = `py-` + 规范化 METADATA Name；version =
+  METADATA Version；displayName = METADATA Name 原样；description =
+  METADATA Summary 去首尾空白，空则 `<Name> <Version>`；imports = RECORD
+  推导的顶层名）——wheel 字节是唯一事实来源，清单字段是可读记录，
+  一致性检查强制逐字段相等；
   `source` 为 `"local"` 的项（本仓库源码构建的 wheel）额外带
   `path`（源码目录），不参与外部来源核验，改为**从源码重建逐字节比对**。
 - `vendor/pyodide-lock-0.26.4.json` — Pyodide 0.26.4 官方 lock，`source` 为
@@ -70,13 +81,19 @@ wheel 不放在能力目录里，统一收在 [vendor/](vendor/README.md)：
 `py-` id，能力目录下不放 `plugins/<id>/`。构建时 `scripts/build.mjs`
 从 vendor 生成 plugin.json（runtime python、authority none、恰好一个
 python-wheel artifact）并把 wheel 复制进内存工作区——不写回源码目录。
-能力自己写了 `plugins/<id>/` 的照原样使用（自研 plugin 优先）。
+能力自己写了 `plugins/<id>/` 的照原样使用（自研 plugin 优先）。模型
+自做的能力引用 vendor 之外的第三方 wheel 时，用 SDK 的
+`plugin_from_wheel` 从 wheel 生成同一形状的规范描述符（同一 wheel
+逐字节相同，D14 第 5 条）。
 
 **规则**（`npm run check` 全部强制执行，`scripts/wheel-checks.mjs` /
 `scripts/vendor.mjs` / `scripts/wheel-util.mjs`）：
 
 1. vendor 一致性：清单与文件一一对应、sha256 一致、pyodide-lock 与
-   README 记录一致；
+   README 记录一致；清单的 id / version / displayName / description /
+   imports 与从 wheel 字节推导的描述符逐字段相等（D14 第 5 条的
+   单一事实来源——同一 wheel 在任何能力里生成逐字节相同的
+   plugin.json）；
 2. 来源核验：纯 Python wheel 的 sha256 必须等于 PyPI JSON API 公布值
    （在线查询，网络不可用时报错退出）；Pyodide 原生 wheel 必须等于
    Pyodide 0.26.4 官方 pyodide-lock.json 里的记录，且文件名一致；
@@ -89,11 +106,16 @@ python-wheel artifact）并把 wheel 复制进内存工作区——不写回源�
 5. 依赖顺序：每个 wheel 的 `Requires-Dist`（无 extra 条件、环境标记对
    Python 3.12 / `sys_platform=emscripten` 成立）要么是 runtime 预装包，
    要么由 `plugins` 列表里位置更靠前的 `py-` plugin 提供；缺依赖或顺序
-   错误都报错。
+   错误都报错；
+6. 体积上限（D14）：插件 wheel 超过 16 MiB（16777216 字节，runtime
+   Python 镜像单文件上限，runtime PR #12）报 `wheel-too-large`——超过
+   的文件在 Locus 内 Python 看不见，无法在 Locus 内打包。
 
 **怎样添加新 wheel**：把 wheel 文件放进 `vendor/wheels/`，在
 `vendor/wheels.json` 里按上述字段登记（id 用 `py-` + 规范化包名），
-在 `vendor/README.md` 补充来源说明；如果是 Pyodide 原生 wheel，
+`displayName` / `description` / `imports`（连同 `id` / `version`）填
+从 wheel 字节推导的值——一致性检查会逐字段核对；在
+`vendor/README.md` 补充来源说明；如果是 Pyodide 原生 wheel，
 `source` 填 `"pyodide-lock"` 并确认 sha256 与 lock 文件一致。改完跑
 `npm run verify-vendor` 与 `npm test`。
 

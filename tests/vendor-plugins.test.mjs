@@ -79,7 +79,7 @@ const bytesEqual = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) === 
       const manifestText = files.has('plugins/' + entry.id + '/plugin.json')
         ? decoder.decode(files.get('plugins/' + entry.id + '/plugin.json'))
         : undefined;
-      const expected = JSON.stringify(vendorPluginManifest(entry), null, 2) + '\n';
+      const expected = JSON.stringify(vendorPluginManifest(entry, readVendorWheel(repoRoot, entry)), null, 2) + '\n';
       check('VW6 生成的 ' + entry.id + ' plugin.json 符合 D13 包 v1 形状',
         manifestText === expected,
         manifestText === undefined ? 'missing' : 'content differs');

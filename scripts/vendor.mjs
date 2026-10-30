@@ -11,7 +11,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
-import { normalizeDistName, pluginIdForDist, parseWheelFilename, PLUGIN_ID_RE } from './wheel-util.mjs';
+import { normalizeDistName, pluginIdForDist, parseWheelFilename, PLUGIN_ID_RE,
+  readWheelMetadata, readWheelRecord, wheelMetadataFields, wheelTopLevelImports } from './wheel-util.mjs';
 
 export const VENDOR_DIR = 'vendor';
 export const WHEELS_JSON_NAME = 'wheels.json';
@@ -129,23 +130,87 @@ export function readVendorWheel(repoRoot, entry) {
   return fs.readFileSync(vendorWheelPath(repoRoot, entry));
 }
 
-// 从 vendor 清单项生成 plugins/<id>/plugin.json 的内容（D13 第 1 条的
-// 包 v1 形状：runtime python、authority none、恰好一个 python-wheel
-// artifact）。build.mjs 在构建时用它把 vendor wheel 材料化进内存工作区。
-export function vendorPluginManifest(entry) {
+// 从 vendor 清单项 + wheel 字节生成 plugins/<id>/plugin.json 的内容
+// （D13 第 1 条的包 v1 形状：runtime python、authority none、恰好一个
+// python-wheel artifact）。build.mjs 在构建时用它把 vendor wheel 材料
+// 化进内存工作区。
+//
+// D14 第 5 条（描述符规范化的单一事实来源）：displayName / description /
+// pythonImports 不再读清单，而是从 wheel 字节推导——displayName =
+// METADATA Name 原样；description = METADATA Summary 去首尾空白（空则
+// "<Name> <Version>"）；pythonImports = RECORD 推导的顶层名。与
+// locus_capability_sdk.plugin_from_wheel 用同一规则，逐字节一致（XC7）。
+// checkVendorConsistency 强制清单里的这三个字段（以及 id / version）等于
+// 推导值，所以 plugin.id / plugin.version 用清单字段与用推导值等价——
+// 这里保留清单字段（物化目录名必须与声明 id 一致）。同一个 wheel 因此
+// 总是得到同一个 plugin.json。
+export function vendorPluginManifest(entry, wheelBytes) {
+  const metadataFields = wheelMetadataFields(readWheelMetadata(wheelBytes));
+  let description = (metadataFields.summary || '').trim();
+  if (!description.length) {
+    description = metadataFields.name + ' ' + metadataFields.version;
+  }
   return {
     schemaVersion: 1,
     plugin: {
       id: entry.id,
       version: entry.version,
-      displayName: entry.displayName,
-      description: entry.description,
+      displayName: metadataFields.name,
+      description,
       runtime: 'python',
       authority: 'none',
-      provides: { pythonImports: entry.imports.slice() },
+      provides: { pythonImports: wheelTopLevelImports(readWheelRecord(wheelBytes)) },
     },
     artifacts: [{ path: 'artifacts/' + entry.filename, format: 'python-wheel' }],
   };
+}
+
+// 描述符推导值 vs 清单字段的一致性（checkVendorConsistency 的组成部分，
+// D14 第 5 条：清单里的 displayName / description / imports 以及 id /
+// version 必须等于从 wheel 字节推导的结果——wheel 字节是唯一事实来源，
+// 清单字段是可读记录）。返回错误信息数组。
+export function checkVendorDescriptorDerivation(repoRoot, entry) {
+  const errors = [];
+  let derived;
+  try {
+    const bytes = readVendorWheel(repoRoot, entry);
+    const metadataFields = wheelMetadataFields(readWheelMetadata(bytes));
+    const imports = wheelTopLevelImports(readWheelRecord(bytes));
+    let description = (metadataFields.summary || '').trim();
+    if (!description.length) description = metadataFields.name + ' ' + metadataFields.version;
+    derived = {
+      id: pluginIdForDist(metadataFields.name),
+      version: metadataFields.version,
+      displayName: metadataFields.name,
+      description,
+      imports,
+    };
+  } catch (e) {
+    return [entry.id + '（' + entry.filename + '）的描述符推导失败: '
+      + (e && e.message ? e.message : String(e))];
+  }
+  const jsonOf = (v) => JSON.stringify(v);
+  if (entry.id !== derived.id) {
+    errors.push(entry.id + ' 的 id 与 wheel METADATA 推导值不一致: 清单 ' + jsonOf(entry.id)
+      + '，推导 ' + jsonOf(derived.id) + '（py- + PEP 503 规范化的 METADATA Name）');
+  }
+  if (entry.version !== derived.version) {
+    errors.push(entry.id + ' 的 version 与 wheel METADATA 推导值不一致: 清单 '
+      + jsonOf(entry.version) + '，推导 ' + jsonOf(derived.version));
+  }
+  if (entry.displayName !== derived.displayName) {
+    errors.push(entry.id + ' 的 displayName 与 wheel METADATA 推导值不一致: 清单 '
+      + jsonOf(entry.displayName) + '，推导 ' + jsonOf(derived.displayName));
+  }
+  if (entry.description !== derived.description) {
+    errors.push(entry.id + ' 的 description 与 wheel METADATA 推导值不一致: 清单 '
+      + jsonOf(entry.description) + '，推导 ' + jsonOf(derived.description));
+  }
+  if (jsonOf(entry.imports) !== jsonOf(derived.imports)) {
+    errors.push(entry.id + ' 的 imports 与 wheel RECORD 推导值不一致: 清单 '
+      + jsonOf(entry.imports) + '，推导 ' + jsonOf(derived.imports));
+  }
+  return errors;
 }
 
 // ---------- pyodide lock 与 README 记录 ----------
@@ -215,6 +280,11 @@ export function checkVendorConsistency(repoRoot) {
     const actual = sha256Hex(fs.readFileSync(file));
     if (actual !== entry.sha256) {
       errors.push(entry.id + '（' + entry.filename + '）sha256 不一致: 清单记录 ' + entry.sha256 + '，实际 ' + actual);
+    }
+    // D14 第 5 条：描述符字段必须等于从 wheel 字节推导的结果（wheel
+    // 字节是唯一事实来源，清单字段是可读记录）。
+    for (const v of checkVendorDescriptorDerivation(repoRoot, entry)) {
+      errors.push(v);
     }
   }
 

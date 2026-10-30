@@ -9,7 +9,7 @@
     "license": "MIT",
     "imports": ["et_xmlfile"],
     "displayName": "et_xmlfile",
-    "description": "An implementation of lxml.xmlfile for the standard library (dependency of openpyxl)."
+    "description": "An implementation of lxml.xmlfile for the standard library"
   },
   {
     "id": "py-openpyxl",
@@ -21,7 +21,7 @@
     "license": "MIT",
     "imports": ["openpyxl"],
     "displayName": "openpyxl",
-    "description": "A Python library to read/write Excel 2010 xlsx/xlsm files."
+    "description": "A Python library to read/write Excel 2010 xlsx/xlsm files"
   },
   {
     "id": "py-lxml",
@@ -33,7 +33,7 @@
     "license": "BSD-3-Clause",
     "imports": ["lxml"],
     "displayName": "lxml",
-    "description": "Powerful and feature-rich library for processing XML and HTML with Python (Pyodide build)."
+    "description": "Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API."
   },
   {
     "id": "py-pillow",
@@ -44,8 +44,8 @@
     "source": "pyodide-lock",
     "license": "HPND",
     "imports": ["PIL"],
-    "displayName": "Pillow",
-    "description": "The friendly PIL fork — Python imaging library (Pyodide build)."
+    "displayName": "pillow",
+    "description": "Python Imaging Library (Fork)"
   },
   {
     "id": "py-typing-extensions",
@@ -57,7 +57,7 @@
     "license": "PSF-2.0",
     "imports": ["typing_extensions"],
     "displayName": "typing_extensions",
-    "description": "Backported and experimental type hints for Python."
+    "description": "Backported and Experimental Type Hints for Python 3.9+"
   },
   {
     "id": "py-xlsxwriter",
@@ -68,8 +68,8 @@
     "source": "pypi",
     "license": "BSD-2-Clause",
     "imports": ["xlsxwriter"],
-    "displayName": "XlsxWriter",
-    "description": "A Python module for writing files in the Excel 2007+ XLSX file format."
+    "displayName": "xlsxwriter",
+    "description": "A Python module for creating Excel XLSX files."
   },
   {
     "id": "py-python-docx",
@@ -81,7 +81,7 @@
     "license": "MIT",
     "imports": ["docx"],
     "displayName": "python-docx",
-    "description": "Create and modify Word .docx files with Python."
+    "description": "Create, read, and update Microsoft Word .docx files."
   },
   {
     "id": "py-python-pptx",
@@ -93,7 +93,7 @@
     "license": "MIT",
     "imports": ["pptx"],
     "displayName": "python-pptx",
-    "description": "Generate and manipulate PowerPoint .pptx files with Python."
+    "description": "Create, read, and update PowerPoint 2007+ (.pptx) files."
   },
   {
     "id": "py-pypdf",
@@ -105,19 +105,19 @@
     "license": "BSD-3-Clause",
     "imports": ["pypdf"],
     "displayName": "pypdf",
-    "description": "A pure-Python PDF library capable of splitting, merging, cropping and transforming PDF files."
+    "description": "A pure-python PDF library capable of splitting, merging, cropping, and transforming PDF files"
   },
   {
     "id": "py-locus-capability-sdk",
     "dist": "locus-capability-sdk",
-    "version": "1.1.0",
-    "filename": "locus_capability_sdk-1.1.0-py3-none-any.whl",
-    "sha256": "d5f70355d5053f3ae33b157a4e29c54571811561147d5261918694348e08e846",
+    "version": "1.2.0",
+    "filename": "locus_capability_sdk-1.2.0-py3-none-any.whl",
+    "sha256": "9436ee15760bcf7b0dc1fc7722f34a82c7b2bf934b6903df728c8d1c41fcb6ae",
     "source": "local",
     "path": "packages/locus_capability_sdk",
     "license": "MIT",
     "imports": ["locus_capability_sdk"],
     "displayName": "locus-capability-sdk",
-    "description": "Locus capability authoring SDK: validate capability projects, build deterministic pure-Python wheels and store-only .locus packages with the standard library."
+    "description": "Locus capability authoring SDK: validate projects, build deterministic wheels and store-only .locus packages."
   }
 ]

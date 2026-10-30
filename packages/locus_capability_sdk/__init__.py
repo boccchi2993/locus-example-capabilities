@@ -11,6 +11,12 @@
 #    sdk.build(project_dir, out_dir) -> {ok, path|diagnostics, sha256, bytes}
 #    sdk.inspect(locus_path)    -> product-import-style summary
 #
+#  D14 third-party wheel tools (offline, stdlib only) live in
+#  _wheeltools: wheel_info / verify_wheel / plugin_from_wheel /
+#  test_site. The canonical plugin descriptor derived from wheel bytes
+#  is byte-identical to scripts/vendor.mjs vendorPluginManifest
+#  (XC7); the 16 MiB wheel size rule is enforced on both sides (XC8).
+#
 #  .locus archives are STORE-ONLY (method 0, the 2026-10-28 owner
 #  decision): deterministic on every engine, no deflate involved.
 #
@@ -47,9 +53,17 @@ from ._skillspec import check_skill_specs
 from ._version import __version__
 from ._wheel import build_wheel as _build_wheel
 from ._wheelrules import (
+    WHEEL_SIZE_LIMIT_BYTES,
     check_capability_wheel_rules,
     find_repo_root,
     load_vendor_entries,
+)
+from ._wheeltools import (
+    PYODIDE_LOCK_VERSION,
+    plugin_from_wheel,
+    test_site,
+    verify_wheel,
+    wheel_info,
 )
 
 LOCUS_JSON_NAME = "locus.json"  # 能力目录的元文件，不进包

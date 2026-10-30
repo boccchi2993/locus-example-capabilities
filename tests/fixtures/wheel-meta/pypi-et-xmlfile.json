@@ -1,0 +1,14 @@
+{
+  "info": {
+    "name": "et_xmlfile",
+    "version": "2.0.0"
+  },
+  "urls": [
+    {
+      "filename": "et_xmlfile-2.0.0-py3-none-any.whl",
+      "digests": {
+        "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"
+      }
+    }
+  ]
+}
