@@ -4,6 +4,6 @@
   "purpose": "Design, test and package new Locus capabilities (.locus) from a plain-language request.",
   "changelog": [
     "1.0.0（2026-10-27）：首个版本",
-    "1.1.0（2026-10-31）：SDK 1.2.0；规范插件描述符；SKILL：第三方 wheel 流程；更正网络说明；导入报告读取"
+    "1.1.0（2026-10-31）：SDK 1.2.0；规范插件描述符；SKILL：第三方 wheel 流程；更正网络说明；导入报告读取；交付使用 sandbox: 链接与文件卡片"
   ]
 }

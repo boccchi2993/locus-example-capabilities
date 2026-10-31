@@ -42,7 +42,11 @@
 //   CA6  SKILL.md 的 curl 与说法检查：每条 curl 命令里的 URL 都在
 //        pypi.org / files.pythonhosted.org / cdn.jsdelivr.net/pyodide/
 //        v0.26.4/ 之下（或示例 capability.json 声明凭据的 origin+pathPrefix
-//        内）；不再出现"无网络"类错误说法（短语清单见检查输出）。
+//        内）；不再出现"无网络"类错误说法（短语清单见检查输出）；交付写法
+//        为 sandbox:/mnt/download/ 文件卡片链接（≥3 处：§5 交付规则 + 两个
+//        示例），"Import from path" 不再作为导入方式出现。
+//   CA7  SKILL.md 总长度不超过 32000 字符（单次工具结果上限约 40000 字符，
+//        给技能全文留余量——技能文本本身也经工具结果送达）。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -682,6 +686,24 @@ print(json.dumps({"tested": True, "ok": True}))
   const hits = banned.filter((p) => lower.includes(p));
   check('CA6: 无"无网络"类说法（检查短语: ' + banned.join(' | ') + '）',
     hits.length === 0, JSON.stringify(hits));
+
+  // 交付写法（product #55 文件卡片 + sandbox: 链接）：
+  //   - 交付用 [名字](sandbox:/mnt/download/…) 文件卡片链接；§5 交付规则、
+  //     6.1 / 6.2 两个示例共 ≥3 处；
+  //   - "Import from path" 不再作为导入方式出现（主要路径改为点文件卡片
+  //     上的 Import；备选写法是 + → Capabilities → Add capability）。
+  const linkCount = (skillMd.match(/\]\(sandbox:\/mnt\/download\//g) || []).length;
+  check('CA6: 交付为 sandbox:/mnt/download/ 文件卡片链接（≥3 处）',
+    linkCount >= 3, String(linkCount));
+  check('CA6: "Import from path" 不再出现', !lower.includes('import from path'));
+}
+
+// ---------- CA7：SKILL.md 总长度 ----------
+{
+  // 单次工具结果上限约 40000 字符；SKILL.md 全文也要作为一个工具结果送达，
+  // 留出余量，总长不得超过 32000 字符（按 JS 字符计，UTF-16 码元）。
+  check('CA7: SKILL.md 总长度 ≤ 32000 字符', skillMd.length <= 32000,
+    String(skillMd.length));
 }
 
 console.log('capability-authoring.test: ' + passed + ' passed, ' + failed + ' failed');

@@ -2,8 +2,8 @@
 
 Use this skill when the user asks for a new capability ("make me a capability
 that …", "做一个……的能力"). You design the capability, write the project, test
-it, and package it into a deterministic `.locus` file the user imports in
-Settings. The judgment and the rules live here; the machinery lives in this
+it, and package it into a deterministic `.locus` file the user imports with
+one click. The judgment and the rules live here; the machinery lives in this
 capability's plugin — `import locus_capability_sdk as sdk` works in any Python
 block, and so does the command line `python -m locus_capability_sdk`.
 
@@ -97,6 +97,22 @@ Rules the SDK enforces (`sdk.validate` prints one diagnostic per violation):
 - One Python program = one separate bash call, wrapped in a quoted heredoc:
   `python <<'PY'` … `PY`. Do not chain a Python heredoc with other commands in
   the same call, and do not use backslash line continuations.
+- Writing files: use a quoted heredoc, `cat > <path> <<'EOF'` … `EOF` — this
+  is also how Python source files are written. One file per call, and split a
+  large file across several calls (first chunk with `cat >`, the rest with
+  `cat >>`): one reply has an output cap, and when a tool call's parameters
+  hit it the call is truncated (the error message says so) and the file is
+  left incomplete.
+- Reading long files: do not `cat` a whole file — use `head -n`, `tail -n`,
+  `sed -n 'A,Bp'` and `grep -n` to read the ranges you need. One tool result
+  is capped at roughly 40000 characters (less when the context is small);
+  beyond that it is truncated, and the message tells you the path of the file
+  holding the full text.
+- Tool budget: a task gets at most 128 tool calls by default (the user can
+  change this in the settings). Plan before you act and skip exploratory
+  commands — every call counts. When 10 calls remain you receive a reminder:
+  report your progress right away and let the user send "继续" to continue in
+  the same conversation (a task that runs out of calls pauses there).
 - Network: GET/HEAD requests run without approval — one response is capped at
   16 MiB and a direct connection times out after 60 seconds. Requests with
   side effects (POST, PUT, DELETE, …) need the user's approval. Python code
@@ -183,8 +199,12 @@ downloads in bash; every other step is offline Python.
    one skill, at most one plugin — plus the wheel plugins of §4 when the task
    needs a third-party library.
 3. **Test the plugin from source**: put `src/` on `sys.path`, import the
-   package, assert the outputs — all in one bash call. Fix failures here,
-   before packaging.
+   package, assert the outputs — all in one bash call. Keep the first
+   version's tests to 3–5 of the most basic assertions — the core function,
+   empty input, one boundary case — get those passing, and only then extend.
+   Do not write precise assertions for complex rules (exact counts over
+   Chinese text, say) unless the user explicitly asked for that rule. Fix
+   failures here, before packaging.
 4. **Package** (one bash call):
    `sdk.build_wheel("src", "<dist>", "<version>", "plugins/<plugin-id>/artifacts", summary=…)`
    → `sdk.validate(".")` — the diagnostics list must be empty; every message
@@ -194,17 +214,23 @@ downloads in bash; every other step is offline Python.
 5. **Deliver.** Before delivering, note the newest filename in
    `/home/locus/capability-imports/` so step 6 can tell the new report apart
    from older ones. Then tell the user:
-   - the complete path of the `.locus` file;
-   - the import step: open **Settings → Capabilities → Import from path** and
-     paste that path;
+   - the package as a file-card link,
+     `[<id>-<version>.locus](sandbox:/mnt/download/<id>-<version>.locus)`,
+     which the reply renders as a card with the file name, size and an
+     **Import** button (files written to `/mnt/download` during the task are
+     also listed below the reply when the task ends);
+   - the import step: click **Import** on that file card (or on the package's
+     entry in the file list in the right sidebar) and confirm the import
+     dialog;
    - what they will see after import: the components (each plugin and skill by
      display name) and, for every declared credential, the exact target
      address (origin + path prefix) their key would be sent to — if there are
      no credentials, say so;
    - that they should tell you once the import is done.
-   Do not try to import the package yourself — you cannot; importing is the
-   user's explicit click, and that click is the trust decision that turns your
-   output into an installed capability.
+   You can also mention **+ → Capabilities → Add capability** as another way
+   to import. Do not try to import the package yourself — you cannot;
+   importing is the user's explicit click, and that click is the trust
+   decision that turns your output into an installed capability.
 6. **Read the import report.** One import attempt writes exactly one report:
    a failed pre-import check writes its report immediately (that is already
    the final report); when the checks pass, the confirm dialog is shown and
@@ -406,14 +432,16 @@ PY
 
 Delivery for this example reads:
 
-> The capability is packaged at `/mnt/download/reference-text-analysis-1.0.0.locus`.
-> Open Settings → Capabilities → Import from path and paste that path. After
-> import you will see the plugin "Reference Text Tools" and the skill "Text
-> Analysis Workflow"; it declares no credentials, so there is nothing to
-> connect. Tell me once it is imported.
+> The capability is packaged:
+> [reference-text-analysis-1.0.0.locus](sandbox:/mnt/download/reference-text-analysis-1.0.0.locus).
+> Click **Import** on the file card (or on its entry in the file list in the
+> right sidebar) and confirm the import dialog. After import you will see the
+> plugin "Reference Text Tools" and the skill "Text Analysis Workflow"; it
+> declares no credentials, so there is nothing to connect. Tell me once it is
+> imported.
 
 If a later change requires a repack, bump the version to `1.0.1` first, rerun
-the build block, and deliver the new path with the same three-part message.
+the build block, and deliver the new link with the same message.
 
 ### 6.2 word-report-builder (third-party wheels)
 
@@ -482,7 +510,9 @@ title), paragraphs, bullet lists and tables.
 ## Steps
 
 1. Build the document in one Python block and save it under `/mnt/download`;
-   tell the user the complete path of the saved file.
+   deliver the file to the user as a link in the reply,
+   `[quarterly-report.docx](sandbox:/mnt/download/quarterly-report.docx)` —
+   it renders as a file card with a Download button.
 2. Elements:
    - title: `document.add_heading("Title", 0)` (level 0 is the title style);
    - paragraph: `document.add_paragraph("…")`;
@@ -607,11 +637,13 @@ PY
 
 Delivery for this example reads:
 
-> The capability is packaged at `/mnt/download/word-report-builder-1.0.0.locus`.
-> Open Settings → Capabilities → Import from path and paste that path. After
-> import you will see the plugins "lxml", "typing_extensions" and
-> "python-docx" plus the skill "Docx Report"; it declares no credentials, so
-> there is nothing to connect. Tell me once it is imported.
+> The capability is packaged:
+> [word-report-builder-1.0.0.locus](sandbox:/mnt/download/word-report-builder-1.0.0.locus).
+> Click **Import** on the file card (or on its entry in the file list in the
+> right sidebar) and confirm the import dialog. After import you will see the
+> plugins "lxml", "typing_extensions" and "python-docx" plus the skill "Docx
+> Report"; it declares no credentials, so there is nothing to connect. Tell
+> me once it is imported.
 
 The three wheel plugins are components other capabilities may carry too —
 because their descriptors come from `plugin_from_wheel`, identical wheels stay
