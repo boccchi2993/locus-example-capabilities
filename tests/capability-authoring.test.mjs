@@ -1,4 +1,4 @@
-// capability-authoring 能力测试（CA1–CA4，C4-CAP）：
+// capability-authoring 能力测试（CA1–CA6，C4-CAP + D14）：
 //   CA1  构建 dist/capability-authoring-1.1.0.locus：两次构建字节相同、
 //        product inspect 通过（ok / kind 'new' / mismatched 空、恰好 1 个
 //        plugin "py-locus-capability-sdk" + 1 个 skill "capability-authoring"）、
@@ -23,6 +23,30 @@
 //   CA4  SKILL.md 顶层 ```python 代码块都能被 CPython ast.parse，且只导入
 //        标准库与 locus_capability_sdk（围栏按长度配对：示例里 4 反引号
 //        markdown 块内嵌的 ```python 属于示例文本，不算顶层块）。
+//        唯一白名单扩展：调用 sdk.test_site 的 Word 示例 smoke 块额外允许
+//        import docx——docx 由打包进能力的 wheel plugin 提供，只有在
+//        test_site 之后才可导入；扩展按"是否调用 sdk.test_site"判定，
+//        不会泄漏到其他块。
+//   CA5  Word 示例（第三方 wheel 插件）全流程，全部离线：从 SKILL.md §6.2
+//        提取文件块建 word-report-builder 项目；三个 wheel 取自
+//        vendor/wheels/（代替下载），发布方元数据用 tests/fixtures/
+//        wheel-meta/ 的夹具（代替 curl 下载的元数据）；pip --target 安装
+//        SDK wheel 后只用装好的 SDK，依次 verify_wheel（×3）→ wheel_info
+//        （python-docx 的 requires）→ plugin_from_wheel（×3，依赖在前的
+//        顺序）→ validate（[]）→ build → inspect（ok，3 plugin + 1 skill）；
+//        product inspect 复核导入检查 ok；生成的三个 plugin.json 与
+//        vendorPluginManifest 从 vendor wheel 字节推导的结果逐字节相同
+//        （D14 第 5 条共享性）。import docx 冒烟只在 CPython 自带 lxml 时
+//        执行（原生 lxml wheel 是 wasm32，CPython 装不了），否则跳过并
+//        打印说明。
+//   CA6  SKILL.md 的 curl 与说法检查：每条 curl 命令里的 URL 都在
+//        pypi.org / files.pythonhosted.org / cdn.jsdelivr.net/pyodide/
+//        v0.26.4/ 之下（或示例 capability.json 声明凭据的 origin+pathPrefix
+//        内）；不再出现"无网络"类错误说法（短语清单见检查输出）；交付写法
+//        为 sandbox:/mnt/download/ 文件卡片链接（≥3 处：§5 交付规则 + 两个
+//        示例），"Import from path" 不再作为导入方式出现。
+//   CA7  SKILL.md 总长度不超过 32000 字符（单次工具结果上限约 40000 字符，
+//        给技能全文留余量——技能文本本身也经工具结果送达）。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -34,13 +58,15 @@ import { fileURLToPath } from 'node:url';
 import { createCapabilityPackages } from 'locus-browser-agent-runtime/src/capability-packages.js';
 
 import { buildCapability, capabilitiesDir, distDir } from '../scripts/build.mjs';
-import { checkSkillSpecs } from '../scripts/skill-spec.mjs';
+import { checkSkillSpecs, extractCurlCommands } from '../scripts/skill-spec.mjs';
+import { loadVendorEntries, vendorPluginManifest } from '../scripts/vendor.mjs';
 
 const CAPABILITY_ID = 'capability-authoring';
 const capabilityDir = path.join(capabilitiesDir, CAPABILITY_ID);
 const skillMdPath = path.join(capabilityDir, 'skills', CAPABILITY_ID, 'SKILL.md');
 const distPath = path.join(distDir, CAPABILITY_ID + '-1.1.0.locus');
 const repoRoot = path.dirname(capabilitiesDir);
+const fixturesDir = path.join(repoRoot, 'tests', 'fixtures');
 const pythonBin = process.env.PYTHON || 'python';
 
 let passed = 0, failed = 0;
@@ -76,7 +102,9 @@ function extractFencedBlocks(text) {
 }
 
 // SKILL.md 示例里的文件块：加粗独占一行的相对路径，后跟（可隔空行）一个
-// 围栏块。返回 Map<相对路径, 文本>。
+// 围栏块。返回 Map<相对路径, 文本>。两个示例共用 capability.json / locus.json
+// 这样的路径名——先见者留（第一个示例持有该路径），后者不再覆盖；第二个
+// 示例的文件块用 exampleSection + extractExampleFiles 定点提取。
 function extractExampleFiles(text) {
   const files = new Map();
   const lines = text.replace(/\r\n/g, '\n').split('\n');
@@ -97,10 +125,18 @@ function extractExampleFiles(text) {
       content.push(lines[k]);
     }
     if (!closed) continue;
-    files.set(m[1], content.join('\n') + '\n');
+    if (!files.has(m[1])) files.set(m[1], content.join('\n') + '\n');
     i = k;
   }
   return files;
+}
+
+// 截取 startMarker 所在小节（到 endMarker 为止；无 endMarker 则到文末）。
+function exampleSection(text, startMarker, endMarker) {
+  const i = text.indexOf(startMarker);
+  if (i < 0) throw new Error('SKILL.md 缺少小节标记: ' + startMarker);
+  const j = endMarker ? text.indexOf(endMarker, i + startMarker.length) : -1;
+  return j < 0 ? text.slice(i) : text.slice(i, j);
 }
 
 // ---------- CA1：构建 + inspect + skill 规范 ----------
@@ -400,14 +436,28 @@ function buildCa2Project() {
   const pyBlocks = extractFencedBlocks(skillMd).filter((b) => b.lang === 'python');
   check('CA4: SKILL.md 至少含 1 个顶层 python 代码块', pyBlocks.length >= 1,
     String(pyBlocks.length));
+  // 白名单扩展（对本文件既有检查的唯一修改）：Word 示例的 wheel smoke 块
+  // 在 sdk.test_site 之后 import docx——docx 由打包进能力的 wheel plugin
+  // 提供。扩展只作用于调用 sdk.test_site 的块，其余块仍只准标准库 + SDK。
+  const docxBlocks = pyBlocks.filter((b) => b.content.includes('sdk.test_site('));
+  check('CA4: docx 扩展只覆盖 Word 示例 smoke 块（恰 1 个且 import docx）',
+    docxBlocks.length === 1 && docxBlocks[0].content.includes('import docx'),
+    String(docxBlocks.length));
   const dir = tmpDir('c4cap-ca4-');
   try {
-    pyBlocks.forEach((b, i) => fs.writeFileSync(path.join(dir, 'block-' + i + '.py'), b.content, 'utf8'));
+    const allowedExtra = {};
+    pyBlocks.forEach((b, i) => {
+      const name = 'block-' + i + '.py';
+      fs.writeFileSync(path.join(dir, name), b.content, 'utf8');
+      if (b.content.includes('sdk.test_site(')) allowedExtra[name] = ['docx'];
+    });
+    const allowedPath = path.join(dir, 'allowed-extra.json');
+    fs.writeFileSync(allowedPath, JSON.stringify(allowedExtra), 'utf8');
     const r = runPython(['-c', `
 import ast, json, sys
 from pathlib import Path
 stdlib = set(sys.stdlib_module_names)
-allowed = stdlib | {"locus_capability_sdk"}
+extra_by_block = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 out = []
 for p in sorted(Path(sys.argv[1]).glob("block-*.py")):
     tree = ast.parse(p.read_text(encoding="utf-8"))
@@ -417,13 +467,14 @@ for p in sorted(Path(sys.argv[1]).glob("block-*.py")):
             roots.update(a.name.split(".")[0] for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             roots.add(node.module.split(".")[0])
+    allowed = stdlib | {"locus_capability_sdk"} | set(extra_by_block.get(p.name, []))
     out.append({"block": p.name, "imports": sorted(roots),
                 "disallowed": sorted(roots - allowed)})
 print(json.dumps(out))
-`, dir], { ...process.env }, null);
+`, dir, allowedPath], { ...process.env }, null);
     let docs = null;
     try { docs = JSON.parse((r.stdout || '').trim()); } catch (e) { void e; }
-    check('CA4: 全部 python 块 ast.parse 成功且只导入标准库与 locus_capability_sdk',
+    check('CA4: 全部 python 块 ast.parse 成功且只导入标准库与 locus_capability_sdk（smoke 块另允许 docx）',
       r.status === 0 && Array.isArray(docs)
         && docs.every((d) => d.disallowed.length === 0)
         && docs.length === pyBlocks.length,
@@ -431,6 +482,228 @@ print(json.dumps(out))
   } finally {
     rmRf(dir);
   }
+}
+
+// ---------- CA5：Word 示例（第三方 wheel 插件）全流程，全部离线 ----------
+{
+  const WORD_PATHS = [
+    'capability.json',
+    'locus.json',
+    'skills/docx-report/skill.json',
+    'skills/docx-report/SKILL.md',
+  ];
+  // 依赖在前的顺序：lxml 与 typing_extensions 是 python-docx 的依赖。
+  const WORD_WHEELS = [
+    { id: 'py-lxml', filename: 'lxml-5.2.1-cp312-cp312-pyodide_2024_0_wasm32.whl', meta: 'pyodide-lock-0.26.4-min.json' },
+    { id: 'py-typing-extensions', filename: 'typing_extensions-4.16.0-py3-none-any.whl', meta: 'pypi-typing.json' },
+    { id: 'py-python-docx', filename: 'python_docx-1.2.0-py3-none-any.whl', meta: 'pypi-word.json' },
+  ];
+  const wordWheelPath = (w) => path.join(repoRoot, 'vendor', 'wheels', w.filename);
+
+  // 与 CA2 相同的沙箱约定：SDK 只经 pip --target 安装后使用。
+  const tmp = tmpDir('c4cap-ca5-');
+  const target = path.join(tmp, 'sdkenv');
+  const project = path.join(tmp, 'word-report-builder');
+  const out = path.join(tmp, 'out');
+  const site = path.join(tmp, 'site');
+  try {
+    fs.mkdirSync(target);
+    const pip = spawnSync(pythonBin, ['-m', 'pip', 'install', '--quiet', '--no-deps',
+      '--target', target, sdkWheelPath], { encoding: 'utf8' });
+    if (pip.status !== 0) throw new Error('pip install SDK wheel 失败: ' + (pip.stderr || ''));
+
+    // §6.2 小节的文件块定点提取（capability.json / locus.json 与 6.1 同名）。
+    const wordFiles = extractExampleFiles(
+      exampleSection(skillMd, '### 6.2 ', '## 7. Anti-patterns'));
+    check('CA5: SKILL.md §6.2 提供全部 4 个示例文件块',
+      WORD_PATHS.every((p) => wordFiles.has(p)),
+      JSON.stringify([...wordFiles.keys()]));
+    for (const rel of WORD_PATHS) {
+      const abs = path.join(project, rel.replace(/\//g, path.sep));
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, wordFiles.get(rel), 'utf8');
+    }
+
+    const sdkIn = (args) => {
+      const r = spawnSync(pythonBin, ['-m', 'locus_capability_sdk', ...args],
+        { encoding: 'utf8', env: pyEnv(target), cwd: project });
+      let doc = null;
+      try { doc = JSON.parse((r.stdout || '').trim()); } catch (e) { void e; }
+      return { ...r, doc };
+    };
+
+    // verify_wheel ×3（夹具代替 curl 下载的发布方元数据）。
+    for (const w of WORD_WHEELS) {
+      const r = sdkIn(['verify-wheel', wordWheelPath(w),
+        path.join(fixturesDir, 'wheel-meta', w.meta)]);
+      check('CA5: verify_wheel 通过 ' + w.id,
+        r.status === 0 && r.doc && r.doc.ok === true
+        && Array.isArray(r.doc.diagnostics) && r.doc.diagnostics.length === 0,
+        (r.stderr || r.stdout || '').slice(0, 300));
+    }
+
+    // wheel_info：python-docx 的 Requires-Dist 决定了要 vendor 哪些依赖。
+    {
+      const r = sdkIn(['wheel-info', wordWheelPath(WORD_WHEELS[2])]);
+      check('CA5: wheel_info 列出 python-docx 的两个依赖',
+        r.status === 0 && r.doc
+        && JSON.stringify(r.doc.requires) === JSON.stringify(['lxml>=3.1.0', 'typing_extensions>=4.9.0']),
+        (r.stdout || r.stderr || '').slice(0, 300));
+    }
+
+    // plugin_from_wheel ×3，依赖在前的顺序。
+    for (const w of WORD_WHEELS) {
+      const r = sdkIn(['plugin-from-wheel', '.', wordWheelPath(w)]);
+      check('CA5: plugin_from_wheel 生成 ' + w.id,
+        r.status === 0 && r.doc && r.doc.id === w.id,
+        (r.stderr || r.stdout || '').slice(0, 300));
+    }
+
+    // validate（空）→ build → inspect（ok，3 plugin + 1 skill）。
+    const v = sdkIn(['validate', '.']);
+    const vDoc = JSON.parse(v.stdout || '{}');
+    check('CA5: validate 诊断为空',
+      v.status === 0 && Array.isArray(vDoc.diagnostics) && vDoc.diagnostics.length === 0,
+      v.stdout.slice(0, 400) + (v.stderr || ''));
+    const b = sdkIn(['build', '.', out]);
+    const bDoc = JSON.parse(b.stdout || '{}');
+    check('CA5: build ok 且产物为 word-report-builder-1.0.0.locus',
+      b.status === 0 && bDoc.ok === true
+      && bDoc.path === path.join(out, 'word-report-builder-1.0.0.locus'),
+      (b.stdout || b.stderr || '').slice(0, 300));
+    const i5 = sdkIn(['inspect', bDoc.path]);
+    const i5Doc = JSON.parse(i5.stdout || '{}');
+    const expectedPlugins = ['py-lxml', 'py-python-docx', 'py-typing-extensions'];
+    check('CA5: sdk.inspect ok，组件为 3 plugin + 1 skill',
+      i5.status === 0 && i5Doc.ok === true
+      && JSON.stringify(i5Doc.components.plugins.map((p) => p.id)) === JSON.stringify(expectedPlugins)
+      && JSON.stringify(i5Doc.components.skills.map((s) => s.id)) === JSON.stringify(['docx-report']),
+      JSON.stringify(i5Doc.components || i5Doc).slice(0, 400));
+
+    // product inspect 复核导入检查。
+    const artifact = fs.readFileSync(bDoc.path);
+    const pSummary = await service.inspect(artifact);
+    const idsOf = (xs) => xs.map((c) => (typeof c === 'string' ? c : c.id)).sort();
+    check('CA5: product inspect ok',
+      pSummary.ok === true, JSON.stringify(pSummary.diagnostics || null));
+    check('CA5: product 组件与 sdk.inspect 一致（3 plugin + 1 skill）',
+      pSummary.ok
+      && JSON.stringify(idsOf(pSummary.components.plugins)) === JSON.stringify(expectedPlugins)
+      && JSON.stringify(idsOf(pSummary.components.skills)) === JSON.stringify(['docx-report']),
+      JSON.stringify(pSummary.components || null));
+
+    // 共享性（D14 第 5 条）：生成的 plugin.json 与 vendor 条目经
+    // vendorPluginManifest（从 wheel 字节推导）的结果逐字节相同。
+    const vendorEntries = loadVendorEntries(repoRoot);
+    for (const w of WORD_WHEELS) {
+      const entry = vendorEntries.find((e) => e.id === w.id);
+      const expected = JSON.stringify(vendorPluginManifest(entry, fs.readFileSync(wordWheelPath(w))), null, 2) + '\n';
+      const actual = fs.readFileSync(path.join(project, 'plugins', w.id, 'plugin.json'), 'utf8');
+      check('CA5: ' + w.id + ' plugin.json 与 vendorPluginManifest 逐字节相同',
+        actual === expected, 'bytes differ for ' + w.id);
+    }
+
+    // import docx 冒烟：原生 lxml wheel 是 wasm32，CPython 装不了——只有
+    // CPython 自带 lxml 时才执行（test_site 只装两个纯 Python wheel，
+    // lxml 走 CPython 自己的 site-packages）；否则跳过并打印说明。
+    {
+      const r = spawnSync(pythonBin, ['-c', `
+import json, sys
+from locus_capability_sdk import test_site
+try:
+    import lxml.etree  # noqa: F401
+    have_lxml = True
+except Exception:
+    have_lxml = False
+if not have_lxml:
+    print(json.dumps({"tested": False,
+        "note": "CPython has no lxml; the native lxml wheel is wasm32 (Pyodide-only) so import docx cannot run here - skipped"}))
+    sys.exit(0)
+test_site(sys.argv[1:3], site=sys.argv[3], allow_unsafe_site_for_tests=True)
+from docx import Document
+d = Document()
+d.add_heading("CA5", 0)
+d.add_paragraph("para")
+d.add_paragraph("bullet", style="List Bullet")
+d.add_table(rows=1, cols=1)
+print(json.dumps({"tested": True, "ok": True}))
+`, wordWheelPath(WORD_WHEELS[2]), wordWheelPath(WORD_WHEELS[1]), site],
+        { encoding: 'utf8', env: pyEnv(target) });
+      let doc = null;
+      try { doc = JSON.parse((r.stdout || '').trim().split('\n').pop()); } catch (e) { void e; }
+      check('CA5: import docx 冒烟（有 lxml 才测，否则跳过）',
+        r.status === 0 && doc && (doc.tested === false || doc.ok === true),
+        r.status + ' ' + (r.stdout || '').slice(0, 200) + ' ' + (r.stderr || '').slice(0, 300));
+      if (doc && doc.tested === false) console.log('NOTE CA5: ' + doc.note);
+    }
+  } finally {
+    rmRf(tmp);
+  }
+}
+
+// ---------- CA6：SKILL.md 的 curl 来源与"无网络"说法 ----------
+{
+  // 每条 curl 命令里的 URL 都在允许的来源之下；示例 capability.json 若
+  // 声明了凭据，其 origin+pathPrefix 一并放行（本文档的两个示例均未声明）。
+  const allowedPrefixes = [
+    'https://pypi.org/',
+    'https://files.pythonhosted.org/',
+    'https://cdn.jsdelivr.net/pyodide/v0.26.4/',
+  ];
+  for (const rel of ['capability.json']) {
+    const content = exampleFiles.get(rel);
+    if (!content) continue;
+    try {
+      const cap = JSON.parse(content).capability;
+      for (const c of (cap && cap.credentials) || []) {
+        if (c && c.origin && c.pathPrefix) allowedPrefixes.push(c.origin + c.pathPrefix);
+      }
+    } catch (e) { void e; }
+  }
+  const curls = extractCurlCommands(skillMd);
+  check('CA6: SKILL.md 含 ≥6 条 curl 下载命令', curls.length >= 6, String(curls.length));
+  const badUrls = [];
+  for (const cmd of curls) {
+    for (const m of cmd.matchAll(/https?:\/\/[^\s'"`<>]+/g)) {
+      const url = m[0].replace(/[),.;:'"]+$/, '');
+      if (!allowedPrefixes.some((p) => url.startsWith(p))) badUrls.push(url);
+    }
+  }
+  check('CA6: 所有 curl URL 在允许来源之下', badUrls.length === 0, JSON.stringify(badUrls));
+
+  // "无网络"类错误说法不得回归（1.0.0 曾写 "There is no network access
+  // ... at authoring time"，与 runtime 事实矛盾：GET/HEAD 无需审批）。
+  // 注：Python 层不可达网络的事实用 "Python code cannot reach the network"
+  // 表述，不落入下列任何短语。
+  const lower = skillMd.toLowerCase();
+  const banned = [
+    'no network',
+    'no internet',
+    'network access is disabled',
+    'network is unavailable',
+    'no installing packages at authoring time',
+  ];
+  const hits = banned.filter((p) => lower.includes(p));
+  check('CA6: 无"无网络"类说法（检查短语: ' + banned.join(' | ') + '）',
+    hits.length === 0, JSON.stringify(hits));
+
+  // 交付写法（product #55 文件卡片 + sandbox: 链接）：
+  //   - 交付用 [名字](sandbox:/mnt/download/…) 文件卡片链接；§5 交付规则、
+  //     6.1 / 6.2 两个示例共 ≥3 处；
+  //   - "Import from path" 不再作为导入方式出现（主要路径改为点文件卡片
+  //     上的 Import；备选写法是 + → Capabilities → Add capability）。
+  const linkCount = (skillMd.match(/\]\(sandbox:\/mnt\/download\//g) || []).length;
+  check('CA6: 交付为 sandbox:/mnt/download/ 文件卡片链接（≥3 处）',
+    linkCount >= 3, String(linkCount));
+  check('CA6: "Import from path" 不再出现', !lower.includes('import from path'));
+}
+
+// ---------- CA7：SKILL.md 总长度 ----------
+{
+  // 单次工具结果上限约 40000 字符；SKILL.md 全文也要作为一个工具结果送达，
+  // 留出余量，总长不得超过 32000 字符（按 JS 字符计，UTF-16 码元）。
+  check('CA7: SKILL.md 总长度 ≤ 32000 字符', skillMd.length <= 32000,
+    String(skillMd.length));
 }
 
 console.log('capability-authoring.test: ' + passed + ' passed, ' + failed + ' failed');

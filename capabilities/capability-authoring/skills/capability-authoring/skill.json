@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "skill": {
     "id": "capability-authoring",
-    "version": "1",
+    "version": "3",
     "displayName": "Capability Authoring",
     "description": "How to design, test and package a new Locus capability project into a deterministic .locus file with the locus_capability_sdk."
   },
