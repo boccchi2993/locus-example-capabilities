@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "acme-mcp",
+    "version": "1.0.0",
+    "displayName": "Acme MCP Crosscheck",
+    "description": "Appendix A crosscheck fixture with one connectable MCP server.",
+    "plugins": [],
+    "skills": [
+      "acme-docs"
+    ],
+    "mcps": [
+      "acme-docs"
+    ],
+    "credentials": [
+      {
+        "name": "ACME_API_TOKEN",
+        "label": "Acme API token",
+        "description": "Used to reach the Acme MCP server.",
+        "origin": "https://mcp.acme.example",
+        "pathPrefix": "/v1/",
+        "header": "Authorization",
+        "scheme": "Bearer"
+      }
+    ]
+  }
+}

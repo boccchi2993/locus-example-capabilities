@@ -26,6 +26,7 @@ from ._descriptors import (
     SKILL_INSTANCE_MAX_BYTES,
     validate_capability_descriptor,
     validate_mcp_descriptor,
+    validate_mcp_binding,
     validate_plugin_descriptor,
     validate_skill_descriptor,
 )
@@ -489,8 +490,10 @@ def _validate_mcp_manifest(parsed, dir_id, logical_path, diagnostics):
             "package_field_missing", logical_path,
             logical_path + ' requires an "mcp" object'))
         return None
-    _reject_unknown_fields(parsed["mcp"], ["id", "displayName", "description"],
-                           logical_path, "mcp descriptor", diagnostics)
+    _reject_unknown_fields(
+        parsed["mcp"],
+        ["id", "displayName", "description", "url", "auth", "credential"],
+        logical_path, "mcp descriptor", diagnostics)
     descriptor = _normalize_descriptor("mcp", parsed["mcp"], logical_path, diagnostics)
     if descriptor is None:
         return None
@@ -711,6 +714,21 @@ def validate_project(workspace, root=None):
                     "package_component_unreferenced", "mcp/" + m["descriptor"]["id"],
                     "mcp %s is not referenced by capability %s"
                     % (m["descriptor"]["id"], capability["id"])))
+        # C3 phase-2 §3.3: every connectable server must be bound to a
+        # credential OF THIS PACKAGE's capability — declared here, bearer
+        # Authorization form, binding covering the server url. The
+        # validator names the violated rule (error.mcp_binding_rule); an
+        # undeclared credential is a MISSING reference, every other
+        # binding fault is an invalid descriptor. Legacy entries (no
+        # endpoint) pass through untouched. Codes match the product.
+        for m in mcps:
+            try:
+                validate_mcp_binding(m["descriptor"], capability)
+            except ExtensionDescriptorError as e:
+                diagnostics.append(package_diagnostic(
+                    "package_ref_missing" if getattr(e, "mcp_binding_rule", "") == "credential-reference"
+                    else "package_descriptor_invalid",
+                    "mcp/%s/mcp.json" % m["descriptor"]["id"], str(e)))
 
     sorted_diagnostics = sort_diagnostics(diagnostics)
     if sorted_diagnostics or capability is None:

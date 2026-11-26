@@ -1,4 +1,4 @@
-// SW1–SW6：D14 第三方 wheel 工具（locus_capability_sdk 1.2.0，
+// SW1–SW6：D14 第三方 wheel 工具（locus_capability_sdk 1.3.0，
 // packages/locus_capability_sdk/_wheeltools.py + __main__.py 的新子命令）。
 // 全部离线：wheel 取自 vendor/wheels/（sha256 以 vendor/wheels.json 已
 // 核对的值为准），发布方元数据用 tests/fixtures/wheel-meta/ 的手工最小

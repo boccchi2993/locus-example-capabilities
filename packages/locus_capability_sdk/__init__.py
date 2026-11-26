@@ -300,6 +300,20 @@ def inspect(locus_path):
     return inspect_bytes(data)
 
 
+def _inspect_mcp(m, credentials):
+    entry = {"id": m["id"], "displayName": m["displayName"]}
+    if "url" in m:
+        label = m["credential"]
+        for c in credentials:
+            if c and c.get("name") == m["credential"]:
+                label = c.get("label")
+                break
+        entry["url"] = m["url"]
+        entry["auth"] = m["auth"]
+        entry["credential"] = {"name": m["credential"], "label": label}
+    return entry
+
+
 def inspect_bytes(data):
     result = _analyze(data)
     if not result["ok"]:
@@ -329,7 +343,11 @@ def inspect_bytes(data):
                         for p in lock["plugins"]],
             "skills": [{"id": s["descriptor"]["id"], "displayName": s["descriptor"]["displayName"]}
                        for s in lock["skills"]],
-            "mcps": [{"id": m["id"], "displayName": m["displayName"]} for m in lock["mcps"]],
+            # C3 phase-2 §3.6: connectable servers carry their endpoint
+            # (routing metadata only, credential as { name, label });
+            # legacy entries keep the bare { id, displayName } shape.
+            "mcps": [_inspect_mcp(m, lock["capability"].get("credentials") or [])
+                     for m in lock["mcps"]],
         },
         "credentials": lock["capability"].get("credentials", []),
         "fileCount": len(files),

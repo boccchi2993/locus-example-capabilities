@@ -1,7 +1,7 @@
 // E2E-SDK12：模拟模型在 Locus 里创作带第三方 wheel 的能力的完整流程
 // （D14 + SPIKE-SYNC 2026-10-30 实验的脚本化）。全部离线，只用 CPython：
 //
-//   pip --target 安装 vendor 里的 locus_capability_sdk 1.2.0 wheel，之后
+//   pip --target 安装 vendor 里的 locus_capability_sdk 1.3.0 wheel，之后
 //   所有 SDK 调用只来自安装后的 wheel（PYTHONPATH 仅含 --target 目录，
 //   不含仓库 packages/）——证明装好的 wheel 本身够用。
 //
@@ -35,7 +35,7 @@ function check(name, cond, detail) {
   else { failed++; console.log('FAIL ' + name + (detail !== undefined ? ' | ' + String(detail) : '')); }
 }
 
-const SDK_WHEEL = path.join(repoRoot, 'vendor', 'wheels', 'locus_capability_sdk-1.2.0-py3-none-any.whl');
+const SDK_WHEEL = path.join(repoRoot, 'vendor', 'wheels', 'locus_capability_sdk-1.3.0-py3-none-any.whl');
 const WHEELS = {
   typing: path.join(repoRoot, 'vendor', 'wheels', 'typing_extensions-4.16.0-py3-none-any.whl'),
   lxml: path.join(repoRoot, 'vendor', 'wheels', 'lxml-5.2.1-cp312-cp312-pyodide_2024_0_wasm32.whl'),
@@ -80,7 +80,7 @@ function sdk(args) {
     'from locus_capability_sdk import _version; print(_version.__version__)'], {
     encoding: 'utf8', env: sdkEnv,
   });
-  check('E2E0 安装后的 SDK 是 1.2.0', probe.status === 0 && probe.stdout.trim() === '1.2.0',
+  check('E2E0 安装后的 SDK 是 1.3.0', probe.status === 0 && probe.stdout.trim() === '1.3.0',
     probe.stdout + probe.stderr);
 }
 

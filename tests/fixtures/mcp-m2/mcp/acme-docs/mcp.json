@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "mcp": {
+    "id": "acme-docs",
+    "displayName": "Acme Documents",
+    "description": "Search and read documents stored in Acme."
+  }
+}
