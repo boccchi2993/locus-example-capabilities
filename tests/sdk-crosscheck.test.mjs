@@ -377,10 +377,10 @@ function record_json(r) {
 // ---------- XC6：SDK 自己的 wheel 可复现 ----------
 {
   const vendorWheel = path.join(repoRoot, 'vendor', 'wheels',
-    'locus_capability_sdk-1.2.0-py3-none-any.whl');
+    'locus_capability_sdk-1.3.0-py3-none-any.whl');
   const out = tmpDir('locus-xc6-');
   try {
-    const r = sdk(['build-wheel', packagesDir, 'locus-capability-sdk', '1.2.0', out,
+    const r = sdk(['build-wheel', packagesDir, 'locus-capability-sdk', '1.3.0', out,
       '--summary', 'Locus capability authoring SDK: validate projects, build deterministic '
         + 'wheels and store-only .locus packages.']);
     check('XC6 重建成功且文件名一致', r.status === 0
@@ -511,6 +511,89 @@ print("ok")
     }
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
+  }
+}
+
+// ---------- XCM：附录 A M1–M15 —— 共用测试样例（C3 phase-2 §11） ----------
+// 三个仓库对同一组包级样例做检查。fixtures mcp-m1 .. mcp-m15 也走上面的
+// XC1–XC3 通用循环（JS 侧用 package.json 锁定的 product 候选代码）；本块
+// 按规格附录 A 逐条断言 SDK 的结论、诊断码与 JS 一致，并深比对 M1/M2 的
+// inspect mcps 端点形状（§3.6）。
+{
+  const expected = {
+    'mcp-m1': { ok: true },
+    'mcp-m2': { ok: true },
+    'mcp-m3': { ok: true },
+    'mcp-m4': { code: 'package_descriptor_invalid' },
+    'mcp-m5': { code: 'package_field_unknown' },
+    'mcp-m6': { code: 'package_descriptor_invalid' },
+    'mcp-m7': { code: 'package_ref_missing' },
+    'mcp-m8': { code: 'package_descriptor_invalid' },
+    'mcp-m9': { code: 'package_descriptor_invalid' },
+    'mcp-m10': { code: 'package_descriptor_invalid' },
+    'mcp-m11': { code: 'package_descriptor_invalid' },
+    'mcp-m12': { code: 'package_descriptor_invalid' },
+    'mcp-m13': { code: 'package_descriptor_invalid' },
+    'mcp-m14': { code: 'package_component_unreferenced' },
+    'mcp-m15': { code: 'package_id_mismatch' },
+  };
+  for (const [name, exp] of Object.entries(expected)) {
+    const sourceDir = path.join(fixturesDir, name);
+    const r = sdk(['validate', sourceDir]);
+    const codes = (r.doc.diagnostics || []).map((d) => d.code);
+    if (exp.ok) {
+      check('XCM ' + name + ' 通过（SDK 与 JS 一致）', r.status === 0 && r.doc.ok === true
+        && codes.length === 0 && sameSet(codes, (await jsPackageCodes(sourceDir)).codes),
+        JSON.stringify(codes));
+      const outDir = tmpDir('locus-xcm-');
+      try {
+        const b = sdk(['build', sourceDir, outDir]);
+        check('XCM ' + name + ' SDK build 成功', b.status === 0 && b.doc.ok === true,
+          b.stderr || JSON.stringify(b.doc).slice(0, 200));
+      } finally {
+        fs.rmSync(outDir, { recursive: true, force: true });
+      }
+    } else {
+      const jsBuild = await jsPackageCodes(sourceDir);
+      check('XCM ' + name + ' 拒绝：' + exp.code + ' 存在且码集合与 JS 一致',
+        r.doc.ok === false && codes.includes(exp.code) && sameSet(codes, jsBuild.codes),
+        'sdk=' + JSON.stringify(codes) + ' js=' + JSON.stringify(jsBuild.codes));
+    }
+  }
+
+  // XC3-deep：M1（可连接）与 M2（旧式）的 inspect components.mcps 形状
+  // 与 product 的 inspect 一致（§3.6：端点字段只在声明了时出现）。
+  const service = createCapabilityPackages({
+    persistence: { loadCapabilityPackages: async () => [] },
+    manager: {},
+    now: () => '1970-01-01T00:00:00.000Z',
+  });
+  for (const [name, wantMcp] of [
+    ['mcp-m1', {
+      id: 'acme-docs', displayName: 'Acme Documents',
+      url: 'https://mcp.acme.example/mcp', auth: 'bearer',
+      credential: { name: 'ACME_API_TOKEN', label: 'Acme API token' },
+    }],
+    ['mcp-m2', { id: 'acme-docs', displayName: 'Acme Documents' }],
+  ]) {
+    const sourceDir = path.join(fixturesDir, name);
+    const jsBuilt = await buildCapability(sourceDir);
+    const summary = await service.inspect(Buffer.from(jsBuilt.bytes));
+    const artifact = path.join(tmpDir('locus-xcm-'), 'pkg.locus');
+    fs.mkdirSync(path.dirname(artifact), { recursive: true });
+    fs.writeFileSync(artifact, Buffer.from(jsBuilt.bytes));
+    try {
+      const s = sdk(['inspect', artifact]);
+      check('XCM ' + name + ' inspect mcps 形状与 product inspect 一致',
+        s.doc.ok === true && canonical(s.doc.components.mcps) === canonical(summary.components.mcps),
+        'sdk=' + JSON.stringify(s.doc.components && s.doc.components.mcps)
+        + ' js=' + JSON.stringify(summary.components && summary.components.mcps));
+      check('XCM ' + name + ' inspect mcps 即规格 §3.6 的形状',
+        s.doc.components.mcps.length === 1 && canonical(s.doc.components.mcps[0]) === canonical(wantMcp),
+        JSON.stringify(s.doc.components.mcps));
+    } finally {
+      fs.rmSync(path.dirname(artifact), { recursive: true, force: true });
+    }
   }
 }
 

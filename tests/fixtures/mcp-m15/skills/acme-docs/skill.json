@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "skill": {
+    "id": "acme-docs",
+    "version": "1.0.0",
+    "displayName": "Acme Documents",
+    "description": "How to search and read Acme documents through the acme-docs MCP server."
+  },
+  "source": "SKILL.md"
+}

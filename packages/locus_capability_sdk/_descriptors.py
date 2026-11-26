@@ -151,13 +151,216 @@ def validate_mcp_descriptor(raw):
         raise ExtensionDescriptorError("mcp descriptor must be an object")
     mid = _require_id(raw.get("id"), "mcp")
     display_name = raw.get("displayName")
-    return {
+    descriptor = {
         "kind": "mcp",
         "id": mid,
         "displayName": display_name if (
             isinstance(display_name, str) and display_name.strip()) else mid,
         "description": raw.get("description") if isinstance(raw.get("description"), str) else "",
     }
+    # C3 phase-2 §3.2: the endpoint trio is appended LAST and only when
+    # declared — a legacy descriptor normalizes to exactly the four
+    # baseline keys so old package locks stay byte-identical (§3.5).
+    endpoint = validate_mcp_endpoint_fields(raw, mid)
+    if endpoint is not None:
+        descriptor["url"] = endpoint["url"]
+        descriptor["auth"] = endpoint["auth"]
+        descriptor["credential"] = endpoint["credential"]
+    return descriptor
+
+
+# C3 phase-2 §3.2 — the three OPTIONAL endpoint fields (url / auth /
+# credential), all-or-nothing. Returns {url, auth, credential} when
+# declared, None for a legacy entry. Verdict-equivalent to the harness
+# validateMcpDescriptor (message text may differ; codes do not).
+MCP_URL_MAX_LENGTH = 2048
+
+
+def _mcp_url_reject_reason(raw):
+    """C3 phase-2 §3.2 url rules; a reject reason string or None.
+
+    Verdict-equivalent to the WHATWG-based JS check: https, no userinfo /
+    query / fragment, canonical spelling (new URL(raw).href === raw),
+    public-DNS host, and a pathname that starts with "/" and contains
+    none of "..", "//", "%".
+    """
+    from urllib.parse import urlsplit
+    if not isinstance(raw, str) or not raw:
+        return "url must be a non-empty string"
+    if len(raw) > MCP_URL_MAX_LENGTH:
+        return "url is over the %d-character limit" % MCP_URL_MAX_LENGTH
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return "url must be an https URL without userinfo, query or fragment"
+    if parts.scheme != "https":
+        return "url must be an https URL without userinfo, query or fragment"
+    if "@" in parts.netloc or parts.query or parts.fragment:
+        return "url must be an https URL without userinfo, query or fragment"
+    # Host / port extraction (WHATWG shape, mirrors _origin_round_trip).
+    host = parts.netloc
+    port = None
+    if host.startswith("["):
+        end = host.find("]")
+        if end < 0:
+            return "url must be written in its canonical form"
+        port_part = host[end + 1:]
+        host = host[:end + 1]
+        if port_part.startswith(":"):
+            port = port_part[1:]
+        elif port_part:
+            return "url must be written in its canonical form"
+    elif ":" in host:
+        host, _, port = host.partition(":")
+        if ":" in host:
+            return "url must be written in its canonical form"
+    if not host:
+        return "url must be an https URL without userinfo, query or fragment"
+    if not host.startswith("["):
+        # WHATWG forbidden host code points fail parsing outright.
+        forbidden = any(c in host for c in (
+            "\t", "\n", "\r", " ", "#", "%", "/", ":", "<", ">", "?", "@",
+            "[", "\\", "]", "^", "|")) or any(ord(c) < 0x20 or ord(c) == 0x7F for c in host)
+        if forbidden:
+            return "url must be an https URL without userinfo, query or fragment"
+        if host != host.lower():
+            return "url must be written in its canonical form"
+    if port is not None:
+        if not port.isdigit() or port == "":
+            return "url must be an https URL without userinfo, query or fragment"
+        if int(port) == 443 or str(int(port)) != port:
+            return "url must be written in its canonical form (no default port, no leading zeros)"
+    path = parts.path
+    # WHATWG normalizes dot segments and percent-encodes everything
+    # outside the RFC 3986 path set — any such spelling cannot be
+    # canonical. Backslashes become "/" in special schemes.
+    if not path or not path.startswith("/"):
+        return "url must be written in its canonical form (non-empty path)"
+    if "\\" in path:
+        return "url must be written in its canonical form"
+    # RFC 3986 pchar + "/" minus "%": anything else (space, control,
+    # non-ASCII, `"<>^\`|{}` …) is percent-encoded by WHATWG href.
+    PATH_ALLOWED = set(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        "-._~!$&'()*+,;=:@/")
+    if any(c not in PATH_ALLOWED and c != "%" for c in path):
+        return "url must be written in its canonical form"
+    if "%" in path:
+        # A valid %XX survives WHATWG href verbatim; an invalid one is
+        # re-encoded (and can no longer be canonical).
+        for i, c in enumerate(path):
+            if c == "%" and not (i + 2 < len(path)
+                                 and path[i + 1] in "0123456789abcdefABCDEF"
+                                 and path[i + 2] in "0123456789abcdefABCDEF"):
+                return "url must be written in its canonical form"
+    segments = path.split("/")
+    if any(seg in (".", "..") for seg in segments):
+        return "url must be written in its canonical form (no dot segments)"
+    host_out = host if host.startswith("[") else host.lower()
+    href = "https://" + host_out + ((":" + port) if port else "") + path
+    if href != raw:
+        return "url must be written in its canonical form (new URL(raw).href === raw)"
+    # Public-DNS host judgment — the SAME rule the credential origin uses.
+    host_rule = host_out[1:-1] if host_out.startswith("[") else host_out
+    if not _host_is_public_dns_name(host_rule):
+        return "url host %s is not a public DNS name (MCP servers are reached only at public hosts)" \
+            % _js_str(host_rule)
+    if ".." in path or "//" in path or "%" in path:
+        return "url pathname must start with \"/\" and contain none of \"..\", \"//\", \"%\""
+    return None
+
+
+def _host_is_public_dns_name(host):
+    is_ipv4 = re.fullmatch(r"[0-9.]+", host) is not None and "." in host
+    is_ipv6 = host.startswith("[") or ":" in host
+    forbidden_suffix = any(host.endswith(s) for s in CREDENTIAL_FORBIDDEN_HOST_SUFFIXES)
+    return not (is_ipv4 or is_ipv6 or host == "localhost" or host.endswith(".")
+                or forbidden_suffix or "." not in host)
+
+
+def validate_mcp_endpoint_fields(raw, mid):
+    at = "mcp " + mid
+    present = [f for f in ("url", "auth", "credential") if f in raw]
+    if not present:
+        return None
+    if len(present) < 3:
+        missing = [f for f in ("url", "auth", "credential") if f not in present]
+        raise ExtensionDescriptorError(
+            '%s: "url", "auth" and "credential" are declared together (all three make the '
+            'server connectable, none keeps it a legacy entry); missing: %s'
+            % (at, ", ".join('"%s"' % f for f in missing)))
+    auth = raw.get("auth")
+    if auth != "bearer":
+        raise ExtensionDescriptorError(
+            '%s: "auth" must be "bearer" (this version supports bearer only), got %s'
+            % (at, _js_str(None if auth is None else auth)))
+    credential = raw.get("credential")
+    if not isinstance(credential, str) or not CREDENTIAL_NAME_PATTERN.fullmatch(credential):
+        raise ExtensionDescriptorError(
+            '%s: "credential" must match %s, got %s'
+            % (at, CREDENTIAL_NAME_PATTERN.pattern, _js_str(None if credential is None else credential)))
+    reason = _mcp_url_reject_reason(raw.get("url"))
+    if reason is not None:
+        raise ExtensionDescriptorError('%s: %s' % (at, reason))
+    return {"url": raw.get("url"), "auth": auth, "credential": credential}
+
+
+def validate_mcp_binding(mcp, capability):
+    """C3 phase-2 §3.3 — the binding rules between a connectable MCP
+    descriptor and the capability that declares it.
+
+    mcp/capability are VALIDATED descriptors. A legacy descriptor (no
+    endpoint fields) returns None. Every other violation raises
+    ExtensionDescriptorError with `mcp_binding_rule` naming the rule
+    ('credential-reference' | 'bearer-scheme' | 'endpoint-coverage').
+    """
+    if not mcp or "url" not in mcp:
+        return None
+    cap = capability or {}
+    mid = mcp["id"]
+    credentials = cap.get("credentials") or []
+    declared = None
+    for c in credentials:
+        if c and c.get("name") == mcp.get("credential"):
+            declared = c
+            break
+    if declared is None:
+        err = ExtensionDescriptorError(
+            'mcp %s: credential "%s" is not declared by capability %s '
+            "(a package server may only reference a credential of its own capability)"
+            % (mid, mcp.get("credential"), cap.get("id")))
+        err.mcp_binding_rule = "credential-reference"
+        raise err
+    if declared.get("header") != "authorization" or declared.get("scheme") != "Bearer":
+        err = ExtensionDescriptorError(
+            'mcp %s: credential "%s" must be a bearer binding (header "authorization", '
+            'scheme "Bearer") to secure an MCP server, got header %s, scheme %s'
+            % (mid, declared.get("name"), _js_str(declared.get("header")),
+               _js_str(declared.get("scheme"))))
+        err.mcp_binding_rule = "bearer-scheme"
+        raise err
+    from urllib.parse import urlsplit
+    try:
+        parsed = urlsplit(mcp["url"])
+    except ValueError:
+        parsed = None
+    origin = None
+    if parsed is not None and parsed.scheme == "https" and "@" not in parsed.netloc:
+        host = parsed.netloc
+        if ":" in host and not host.startswith("["):
+            host = host.partition(":")[0]
+        origin = parsed.scheme + "://" + host.lower()
+    path_prefix = declared.get("pathPrefix")
+    covered = (origin is not None and origin == declared.get("origin")
+               and isinstance(path_prefix, str) and parsed.path.startswith(path_prefix))
+    if not covered:
+        err = ExtensionDescriptorError(
+            'mcp %s: credential "%s" binding (origin %s, pathPrefix %s) does not cover the '
+            "server url %s" % (mid, declared.get("name"), _js_str(declared.get("origin")),
+                               _js_str(declared.get("pathPrefix")), _js_str(mcp["url"])))
+        err.mcp_binding_rule = "endpoint-coverage"
+        raise err
+    return None
 
 
 def _origin_round_trip(origin):

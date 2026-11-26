@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "acme-mcp",
+    "version": "1.0.0",
+    "displayName": "Acme MCP Crosscheck",
+    "description": "Appendix A crosscheck fixture without any MCP server.",
+    "plugins": [],
+    "skills": [
+      "acme-docs"
+    ],
+    "mcps": []
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "mcp": {
+    "id": "acme-docs",
+    "displayName": "Acme Documents",
+    "description": "Search and read documents stored in Acme.",
+    "url": "https://mcp.internal/mcp",
+    "auth": "bearer",
+    "credential": "ACME_API_TOKEN"
+  }
+}
